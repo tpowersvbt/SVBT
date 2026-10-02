@@ -1,5 +1,11 @@
 # Silicon Valley Bank and Trust
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
+**🚀 ONE-CLICK DEPLOY**: After uploading to GitHub, click the button above or see [ONE_CLICK_DEPLOY.md](ONE_CLICK_DEPLOY.md)
+
+---
+
 Complete local reconstruction from SVBT Full Scale Build.pdf and Timothy Powers BI.pdf, with the supplied Tim Power portrait. React 19, Vite, Three.js, Node.js 24, Express 5, native SQLite, scrypt and PDFKit. No external APIs, analytics, remotely loaded fonts or cloud database are used at runtime. Package installation requires internet access unless npm dependencies are already cached.
 
 ## Start on Windows
