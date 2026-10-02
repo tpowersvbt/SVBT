@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: svbt
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ORIGIN
+        value: https://siliconvalleybankandtrust.com
+      - key: PORT
+        value: 3000
+      - key: HOST
+        value: 0.0.0.0
+      - key: DB_PATH
+        value: /opt/render/project/src/data/bank.sqlite
+      - key: STATEMENT_DIR
+        value: /opt/render/project/src/monthly/statements
+      - key: TRUST_PROXY
+        value: true
+      - key: DEMO_SEED
+        value: false
+      - key: MODERATOR_EMAIL
+        sync: false
+      - key: MODERATOR_PASSWORD
+        sync: false
+    disk:
+      name: svbt-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
