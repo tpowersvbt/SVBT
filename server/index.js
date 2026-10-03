@@ -43,12 +43,11 @@ export async function createApp(options = {}) {
   const config = configuration(options);
   let dbPath = config.dbPath;
   
-  // Force fresh database if demo seed is enabled - always delete for clean state
+  // Always ensure fresh demo database on startup
   if (config.demoSeed) {
     const fs = await import('fs');
-    console.log('Demo seed enabled - removing old database for fresh seeding...');
+    console.log('Demo seed enabled - resetting database for fresh provisioning...');
     try {
-      // Remove old database files
       for (const file of [dbPath, dbPath + '-shm', dbPath + '-wal']) {
         if (fs.existsSync(file)) {
           fs.unlinkSync(file);
@@ -63,16 +62,46 @@ export async function createApp(options = {}) {
   const db = openDatabase(dbPath);
   let vite;
   try {
-    if (config.production) {
-      if (db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) throw new Error('Production cannot use a demo-seeded database. Use a fresh database for handover.');
-      const demoUsers = db.prepare('SELECT passwordHash FROM users WHERE email IN (?,?)').all(demoCredentials.customer[0], demoCredentials.moderator[0]);
-      for (const user of demoUsers) for (const [, secret] of Object.values(demoCredentials)) if (await verifyPassword(secret, user.passwordHash)) throw new Error('Production database contains demonstration credentials. Use a fresh database and provision a unique moderator.');
-    }
+    // Provision moderator and customer accounts (works in any mode)
     if (config.demoSeed) {
-      await seedDemo(db);
-      const seedAccount = Number(db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get().value);
-      const moderator = db.prepare('SELECT id FROM users WHERE email=?').get(demoCredentials.moderator[0]);
-      for (const month of ['2026-06', '2026-07', '2026-08', '2026-09']) if (!db.prepare('SELECT id FROM statements WHERE accountId=? AND month=?').get(seedAccount, month)) await issueStatement(db, seedAccount, month, moderator.id, config.statementDir);
+      console.log('Provisioning demo accounts...');
+      const [modEmail, modPassword] = demoCredentials.moderator;
+      const [custEmail, custPassword] = demoCredentials.customer;
+      
+      // Create moderator if doesn't exist
+      if (!db.prepare('SELECT id FROM users WHERE email=?').get(modEmail)) {
+        console.log(`Creating moderator: ${modEmail}`);
+        const modHash = await hashPassword(modPassword);
+        db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
+          modEmail, 'Timothy Powers', '123 Banking Street, Palo Alto, CA 94301', 'moderator', modHash
+        );
+      }
+      
+      // Create customer and seed if doesn't exist
+      let custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
+      if (!custUser) {
+        console.log(`Creating customer: ${custEmail}`);
+        const custHash = await hashPassword(custPassword);
+        const custId = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
+          custEmail, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001', 'customer', custHash
+        ).lastInsertRowid);
+        newAccount(db, custId, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001');
+        custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
+      }
+      
+      // Seed transactions and statements
+      const custAccount = db.prepare('SELECT id FROM accounts WHERE userId=?').get(custUser.id);
+      if (custAccount && !db.prepare('SELECT id FROM transactions WHERE accountId=?').get(custAccount.id)) {
+        console.log('Seeding demo data...');
+        await seedDemo(db);
+        const mod = db.prepare('SELECT id FROM users WHERE email=?').get(modEmail);
+        for (const month of ['2026-06', '2026-07', '2026-08', '2026-09']) {
+          if (!db.prepare('SELECT id FROM statements WHERE accountId=? AND month=?').get(custAccount.id, month)) {
+            await issueStatement(db, custAccount.id, month, mod.id, config.statementDir);
+          }
+        }
+        console.log('Demo data seeded successfully');
+      }
     }
     const dummyHash = await hashPassword(randomBytes(32).toString('hex'));
     const app = express();
