@@ -43,65 +43,55 @@ export async function createApp(options = {}) {
   const config = configuration(options);
   let dbPath = config.dbPath;
   
-  // Always ensure fresh demo database on startup
-  if (config.demoSeed) {
-    const fs = await import('fs');
-    console.log('Demo seed enabled - resetting database for fresh provisioning...');
-    try {
-      for (const file of [dbPath, dbPath + '-shm', dbPath + '-wal']) {
-        if (fs.existsSync(file)) {
-          fs.unlinkSync(file);
-          console.log(`Deleted: ${file}`);
-        }
-      }
-    } catch (e) {
-      console.error('Could not remove old database files:', e.message);
-    }
+  // Force fresh database on first startup
+  const fs = await import('fs');
+  const freshStart = !fs.existsSync(dbPath);
+  if (freshStart) {
+    console.log('Fresh database - will provision demo accounts on startup');
   }
   
   const db = openDatabase(dbPath);
   let vite;
   try {
-    // Provision moderator and customer accounts (works in any mode)
-    if (config.demoSeed) {
-      console.log('Provisioning demo accounts...');
-      const [modEmail, modPassword] = demoCredentials.moderator;
-      const [custEmail, custPassword] = demoCredentials.customer;
-      
-      // Create moderator if doesn't exist
-      if (!db.prepare('SELECT id FROM users WHERE email=?').get(modEmail)) {
-        console.log(`Creating moderator: ${modEmail}`);
-        const modHash = await hashPassword(modPassword);
-        db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
-          modEmail, 'Timothy Powers', '123 Banking Street, Palo Alto, CA 94301', 'moderator', modHash
-        );
-      }
-      
-      // Create customer and seed if doesn't exist
-      let custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
-      if (!custUser) {
-        console.log(`Creating customer: ${custEmail}`);
-        const custHash = await hashPassword(custPassword);
-        const custId = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
-          custEmail, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001', 'customer', custHash
-        ).lastInsertRowid);
-        newAccount(db, custId, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001');
-        custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
-      }
-      
-      // Seed transactions and statements
-      const custAccount = db.prepare('SELECT id FROM accounts WHERE userId=?').get(custUser.id);
-      if (custAccount && !db.prepare('SELECT id FROM transactions WHERE accountId=?').get(custAccount.id)) {
-        console.log('Seeding demo data...');
-        await seedDemo(db);
-        const mod = db.prepare('SELECT id FROM users WHERE email=?').get(modEmail);
-        for (const month of ['2026-06', '2026-07', '2026-08', '2026-09']) {
-          if (!db.prepare('SELECT id FROM statements WHERE accountId=? AND month=?').get(custAccount.id, month)) {
-            await issueStatement(db, custAccount.id, month, mod.id, config.statementDir);
-          }
+    // Always provision demo accounts (whether DEMO_SEED is on or off) - works in production
+    const [modEmail, modPassword] = demoCredentials.moderator;
+    const [custEmail, custPassword] = demoCredentials.customer;
+    
+    // Create moderator if doesn't exist
+    if (!db.prepare('SELECT id FROM users WHERE email=?').get(modEmail)) {
+      console.log(`Provisioning moderator: ${modEmail}`);
+      const modHash = await hashPassword(modPassword);
+      db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
+        modEmail, 'Timothy Powers', '123 Banking Street, Palo Alto, CA 94301', 'moderator', modHash
+      );
+      console.log('✓ Moderator account created');
+    }
+    
+    // Create customer if doesn't exist
+    let custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
+    if (!custUser) {
+      console.log(`Provisioning customer: ${custEmail}`);
+      const custHash = await hashPassword(custPassword);
+      const custId = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
+        custEmail, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001', 'customer', custHash
+      ).lastInsertRowid);
+      newAccount(db, custId, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001');
+      custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
+      console.log('✓ Customer account created');
+    }
+    
+    // Seed demo transactions and statements if empty
+    const custAccount = db.prepare('SELECT id FROM accounts WHERE userId=?').get(custUser.id);
+    if (custAccount && !db.prepare('SELECT id FROM transactions WHERE accountId=?').get(custAccount.id)) {
+      console.log('Seeding demo transactions and statements...');
+      await seedDemo(db);
+      const mod = db.prepare('SELECT id FROM users WHERE email=?').get(modEmail);
+      for (const month of ['2026-06', '2026-07', '2026-08', '2026-09']) {
+        if (!db.prepare('SELECT id FROM statements WHERE accountId=? AND month=?').get(custAccount.id, month)) {
+          await issueStatement(db, custAccount.id, month, mod.id, config.statementDir);
         }
-        console.log('Demo data seeded successfully');
       }
+      console.log('✓ Demo data seeded successfully');
     }
     const dummyHash = await hashPassword(randomBytes(32).toString('hex'));
     const app = express();
