@@ -1,5 +1,46 @@
 import { test, expect } from '@playwright/test';
 
+test('moderator publishes projects and reviews biography without exposing private drafts', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Moderator login', exact: true }).click();
+  await page.getByLabel('Email', { exact: true }).fill('tpower@siliconvalleybankandtrust.com');
+  await page.getByLabel('Password', { exact: true }).fill('ModeratorGod!2026');
+  await page.getByRole('button', { name: /Sign in securely/ }).click();
+  await page.getByRole('button', { name: /^Projects/ }).click();
+  await page.getByRole('button', { name: 'New project +' }).click();
+  const title=`Private data center ${Date.now()}`;
+  await page.getByLabel('Project title', { exact:true }).fill(title);
+  await page.getByLabel('Public summary', { exact:true }).fill('A proposed data center project.');
+  await page.getByLabel('Public description', { exact:true }).fill('Project scope and publicly approved details.');
+  await page.getByLabel('Private moderator notes', { exact:true }).fill('SECRET-MODERATOR-NOTES');
+  await page.getByRole('button', { name:'Save private draft',exact:true }).click();
+  await expect(page.getByRole('status').filter({hasText:'Draft saved'})).toBeVisible();
+  expect(JSON.stringify(await (await page.request.get('/api/projects')).json())).not.toContain(title);
+  const row=page.locator('.archive-row').filter({hasText:title});
+  await row.getByRole('button',{name:'Preview & publish'}).click();
+  await expect(page.locator('.project-preview')).not.toContainText('SECRET-MODERATOR-NOTES');
+  await page.getByRole('button',{name:'Publish / List publicly'}).click();
+  await expect(row).toContainText('Published');
+  const published=await (await page.request.get('/api/projects')).json();
+  expect(JSON.stringify(published)).toContain(title);
+  expect(JSON.stringify(published)).not.toContain('SECRET-MODERATOR-NOTES');
+  await row.getByRole('button',{name:'Unpublish',exact:true}).click();
+  await expect(row).toContainText('Private draft');
+  await page.getByRole('button',{name:/^Leadership bio/}).click();
+  const before=await (await page.request.get('/api/leadership')).json();
+  await page.getByRole('textbox',{name:'Biography',exact:true}).fill(`Reviewed local test biography ${Date.now()}`);
+  await page.getByRole('button',{name:'Save biography draft'}).click();
+  await expect(page.getByRole('status').filter({hasText:'Biography draft saved'})).toBeVisible();
+  expect(await (await page.request.get('/api/leadership')).json()).toEqual(before);
+  await page.getByRole('button',{name:'Preview biography'}).click();
+  await expect(page.getByRole('button',{name:'Publish biography',exact:true})).toBeDisabled();
+  await page.getByLabel('I have reviewed these biographical details for accuracy.').check();
+  await page.screenshot({path:'.tools/leadership-editor.png',fullPage:true});
+  await page.getByRole('button',{name:'Publish biography',exact:true}).click();
+  await expect(page.getByRole('status').filter({hasText:'Reviewed biography published'})).toBeVisible();
+  expect((await (await page.request.get('/api/leadership')).json()).biography).toContain('Reviewed local test biography');
+});
+
 test('public site, portrait, mobile sector dialog and genuine WebGL canvas', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

@@ -10,6 +10,51 @@ import { openDatabase, verifyPassword } from '../server/db.js';
 import { digest } from '../server/services.js';
 
 const origin = 'http://localhost:3000';
+
+test('project and biography publishing keeps drafts private and requires moderator authority', async () => {
+  const f = await fixture();
+  try {
+    const anon=f.client(), customer=f.client(), admin=f.client();
+    assert.deepEqual((await anon.request('/projects')).data, []);
+    assert.equal((await anon.request('/admin/projects')).status,401);
+    assert.equal((await anon.request('/admin/leadership')).status,401);
+    await customer.login('sales@bakhtiariautogroup.com','FounderClient!2026');
+    for (const path of ['/admin/projects','/admin/leadership']) assert.equal((await customer.request(path)).status,403);
+    assert.equal((await customer.request('/admin/projects','POST',{title:'forbidden'})).status,403);
+    await admin.login('tpower@siliconvalleybankandtrust.com','ModeratorGod!2026');
+    const values={title:'Data project',summary:'Public overview',description:'First paragraph.\nSecond paragraph.',privateNotes:'SECRET-NOTES',published:'malicious-auto-publish'};
+    const created=await admin.request('/admin/projects','POST',values);
+    assert.equal(created.status,201);
+    let row=created.data;
+    assert.equal(row.published,null);
+    assert.deepEqual((await anon.request('/projects')).data,[]);
+    assert.equal((await admin.request(`/admin/projects/${row.id}/publish`,'POST',{version:row.version},{'X-CSRF-Token':''})).status,403);
+    row=(await admin.request(`/admin/projects/${row.id}/publish`,'POST',{version:row.version})).data;
+    let publicRows=(await anon.request('/projects')).data;
+    assert.equal(publicRows[0].title,values.title);
+    assert.ok(!JSON.stringify(publicRows).includes('SECRET-NOTES'));
+    assert.deepEqual(Object.keys(publicRows[0]).sort(),['description','id','publishedAt','summary','title']);
+    assert.equal((await admin.request(`/admin/projects/${row.id}`,'PUT',{...values,version:1})).status,409);
+    row=(await admin.request(`/admin/projects/${row.id}`,'PUT',{...values,title:'Private revision',version:row.version})).data;
+    assert.equal((await anon.request('/projects')).data[0].title,'Data project');
+    row=(await admin.request(`/admin/projects/${row.id}/publish`,'POST',{version:row.version})).data;
+    assert.equal((await anon.request('/projects')).data[0].title,'Private revision');
+    assert.equal((await admin.request(`/admin/projects/${row.id}/unpublish`,'POST',{version:row.version})).status,200);
+    assert.deepEqual((await anon.request('/projects')).data,[]);
+    assert.equal((await admin.request('/admin/projects')).data[0].privateNotes,'SECRET-NOTES');
+    const original=(await anon.request('/leadership')).data;
+    let bio=(await admin.request('/admin/leadership')).data;
+    bio=(await admin.request('/admin/leadership','PUT',{...bio.draft,biography:'Reviewed biography.\nWith a second paragraph.',version:bio.version})).data;
+    assert.deepEqual((await anon.request('/leadership')).data,original);
+    assert.equal((await customer.request('/admin/leadership/publish','POST',{version:bio.version,reviewed:true})).status,403);
+    assert.equal((await admin.request('/admin/leadership/publish','POST',{version:bio.version,reviewed:false})).status,400);
+    assert.equal((await admin.request('/admin/leadership/publish','POST',{version:bio.version,reviewed:true})).status,200);
+    assert.equal((await anon.request('/leadership')).data.biography,'Reviewed biography.\nWith a second paragraph.');
+    assert.equal((await admin.request('/admin/leadership')).data.original.biography,original.biography);
+    assert.ok(f.db.prepare("SELECT id FROM audit WHERE action='leadership.publish'").get());
+    assert.ok(f.db.prepare("SELECT id FROM audit WHERE action='project.unpublish'").get());
+  } finally { await f.close(); }
+});
 async function fixture(options = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'svbt-test-'));
   const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), demoSeed: true, ...options });

@@ -26,3 +26,18 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .section, .focus-strip, .cta { background: rgba(7,17,30,.85); }
 .hero .scene-controls { bottom: 0; }
 @media print { body::before { display: none; } }
+
+.project-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: 24px; }
+.project-card { min-width: 0; overflow-wrap: anywhere; }
+.project-card h3 { margin: 12px 0; }
+.project-card summary { cursor: pointer; color: var(--ice); padding: 12px 0; }
+.project-description { white-space: pre-wrap; }
+.project-editor,.project-preview { padding: 24px 0; margin: 24px 0; border-block: 1px solid var(--border); }
+.project-editor { display: grid; gap: 18px; }
+.project-editor textarea { width: 100%; box-sizing: border-box; }
+.project-preview .toolbar { margin-top: 20px; }
+
+.review-checkbox { display:flex; gap:12px; align-items:center; margin:20px 0; }
+.review-checkbox input { width:20px; height:20px; flex:none; }
+.workspace label.review-checkbox { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; text-align:left; }
+.workspace .review-checkbox input { width:20px; height:20px; min-height:20px; padding:0; margin:0; }

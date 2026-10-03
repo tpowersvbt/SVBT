@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import { initializeLeadership, leadership, updateLeadership } from './leadership.js';
+import { initializeProjects, saveProject, publishProject, publicProjects } from './projects.js';
 import { renderStatement } from './pdf.js';
 
 import express from 'express';
@@ -90,6 +92,8 @@ export async function createApp(options = {}) {
   const config = configuration(options);
 
   const db = openDatabase(config.dbPath);
+  initializeProjects(db);
+  initializeLeadership(db);
 
   let vite;
 
@@ -327,7 +331,17 @@ export async function createApp(options = {}) {
 
     });
 
+    app.get('/api/leadership', (req, res) => res.json(leadership(db).published));
+    app.get('/api/projects', (req, res) => res.json(publicProjects(db)));
     app.use('/api/admin', moderator);
+    app.get('/api/admin/leadership', (req, res) => res.json(leadership(db)));
+    app.put('/api/admin/leadership', (req, res) => res.json(updateLeadership(db, req.body, req.user.id)));
+    app.post('/api/admin/leadership/publish', (req, res) => res.json(updateLeadership(db, req.body, req.user.id, true)));
+    app.get('/api/admin/projects', (req, res) => res.json(db.prepare('SELECT * FROM projects ORDER BY updatedAt DESC,id DESC').all()));
+    app.post('/api/admin/projects', (req, res) => res.status(201).json(saveProject(db, null, req.body, req.user.id)));
+    app.put('/api/admin/projects/:id', (req, res) => res.json(saveProject(db, identifier(req.params.id), req.body, req.user.id)));
+    app.post('/api/admin/projects/:id/publish', (req, res) => res.json(publishProject(db, identifier(req.params.id), req.body.version, true, req.user.id)));
+    app.post('/api/admin/projects/:id/unpublish', (req, res) => res.json(publishProject(db, identifier(req.params.id), req.body.version, false, req.user.id)));
 
     app.get('/api/admin/accounts', (req, res) => res.json(db.prepare('SELECT * FROM accounts ORDER BY id').all()));
 
