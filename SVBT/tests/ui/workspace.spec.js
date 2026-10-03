@@ -49,9 +49,11 @@ test('moderator calculates preview, verifies archive and downloads an issued PDF
   await page.getByRole('button', { name: 'Check integrity' }).first().click();
   await expect(page.getByText('Integrity verified', { exact: true })).toBeVisible();
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: /Download PDF/ }).first().click();
+  await page.getByRole('button', { name: /Download branded PDF/ }).first().click();
   expect((await download).suggestedFilename()).toBe('business-checking-2026-09-r1.pdf');
   await page.getByRole('button', { name: /^Investments/ }).click();
   await expect(page.getByRole('heading', { name: 'Restricted investment records' })).toBeVisible();
   await expect(page.locator('.investment-card')).toHaveCount(3);
 });
+
+
