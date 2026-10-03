@@ -1,146 +1,71 @@
-# Silicon Valley Bank and Trust
+# SVBT — Mr. Powers operations handoff
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+Prepared from the supplied ffee4f56379c0707ec2a423e51a9cbc8c86ec6f4 archive.
+The uploaded archive is older than commit c435297 shown in the deployment log.
+This package is a reviewed replacement based on the supplied archive, not a merge of that later commit.
 
-**🚀 ONE-CLICK DEPLOY**: After uploading to GitHub, click the button above or see [ONE_CLICK_DEPLOY.md](ONE_CLICK_DEPLOY.md)
+## Moderator login
 
----
+Choose **Moderator login** in the top navigation or **Moderator access** in the footer.
+The email and password are supplied privately in Render's environment settings:
 
-Complete local reconstruction from SVBT Full Scale Build.pdf and Timothy Powers BI.pdf, with the supplied Tim Power portrait. React 19, Vite, Three.js, Node.js 24, Express 5, native SQLite, scrypt and PDFKit. No external APIs, analytics, remotely loaded fonts or cloud database are used at runtime. Package installation requires internet access unless npm dependencies are already cached.
+| Variable | Value |
+| --- | --- |
+| NODE_ENV | production |
+| APP_ORIGIN | Exact HTTPS address used to open this site, without a trailing slash |
+| MODERATOR_EMAIL | Mr. Powers' chosen email (the last deployment used misterchrismac@gmail.com) |
+| MODERATOR_PASSWORD | A unique password of 12 or more characters; never place it in GitHub |
+| MODERATOR_NAME | Timothy Powers |
+| DEMO_SEED | false |
+| SAMPLE_DATA | true |
+| TRUST_PROXY | true |
+| DB_PATH | /var/data/bank.sqlite |
+| STATEMENT_DIR | /var/data/statements |
 
-## Start on Windows
+The moderator is created automatically on first startup. An existing moderator's password
+and role are preserved. Changing an environment password does not silently reset an account.
+For an intentional reset, set MODERATOR_RESET=true and run `npm run create-moderator`
+in the service shell, then remove MODERATOR_RESET. This invalidates the old sessions.
+No public default moderator password is supplied. A new sample customer gets an unknown,
+random password; the moderator can review its ledger without a customer login.
 
-1. Install Node.js 24 or newer from nodejs.org. Close and reopen your terminal after installation.
-2. Open PowerShell in this project folder.
-3. Run:
+## Four months of statements
 
-```powershell
-npm ci
-Copy-Item .env.example .env
-npm run seed
-npm run dev
-```
+June, July, August and September 2026 remain available for the operations team.
+The first run creates the supplied sample ledger and four issued PDFs. Further starts
+reuse the same records and PDF hashes. No database files are deleted on startup.
+Existing user passwords are not replaced by sample setup. An unmarked ledger that already
+has activity is left untouched and startup stops rather than mixing sample transactions into it.
+Existing issued PDFs are immutable and are not rewritten; older PDFs can retain prior wording.
+New PDFs say **SAMPLE RECORD - No real funds**.
 
-4. Open **http://localhost:3000** in current Chrome, Edge or Firefox. Use exactly `localhost`, not `127.0.0.1`, for the configured browser origin. Allow cookies. Secure cookies are supported on localhost by modern browsers. Do not use a custom plain-HTTP hostname; use HTTPS for custom names.
-5. Keep the terminal open. Press Ctrl+C to stop. Database and issued statements persist across restarts.
+## Deployment
 
-On macOS/Linux, replace the copy command with `cp .env.example .env`; all npm commands are identical.
+1. Back up the current database and statement files before updating. Do not delete them.
+2. Replace the source with this package in the existing SVBT repository after reviewing
+   any changes made since the supplied archive. Never upload node_modules, .env or database files.
+3. Configure the environment above. Updating render.yaml does not automatically populate
+   new `sync: false` variables on an existing service; set them in Render directly.
+4. Attach persistent storage and keep both DB_PATH and STATEMENT_DIR under its mount.
+   The included Render blueprint selects the paid Starter plan and a 1 GB persistent disk;
+   it is a configuration file only, and no service or paid resource has been created here.
+   If moving existing records to /var/data, migrate the backed-up data before startup.
+5. Build: `npm ci && npm run build`. Start: `NODE_ENV=production npm start`.
+6. Confirm `/api/health`, sign in as moderator, open the sample customer, and download
+   all four statements. Restart once and confirm the same records remain.
 
-First startup also seeds automatically when DEMO_SEED=true. The seed command is idempotent and verifies the four ending balances. It refuses to conceal later ledger corrections by overwriting history.
+Render reference: https://render.com/docs/blueprint-spec
+Persistent storage: https://render.com/docs/disks
 
-## Demonstration logins
+## Scope for compliance review
 
-| Access | Email | Password |
-| --- | --- | --- |
-| VIP customer | sales@bakhtiariautogroup.com | FounderClient!2026 |
-| Moderator | tpower@siliconvalleybankandtrust.com | ModeratorGod!2026 |
+Visible "demo" wording has been replaced with neutral workspace language. Sample records
+and the absence of real funds remain identified. Developer fixture names retain "demo"
+for compatibility with existing tests and metadata; these are not public branding.
+This is deployable application source for operations review, not a certification of a
+regulated banking service. There is no connected core banking, payment settlement or live
+deposit integration in the supplied project. The compliance office should supply final
+public disclosures and confirm the leadership biography/name before public release.
 
-Customer: use Log in. Moderator: use Moderator access in the footer. Both screens authenticate against the same server; the screen does not determine permissions. These passwords are public local-demo credentials only.
-
-Before the FIRST seed, change DEMO_CUSTOMER_EMAIL, DEMO_CUSTOMER_PASSWORD, DEMO_MODERATOR_EMAIL and DEMO_MODERATOR_PASSWORD in .env to customize demo credentials. Editing these settings after seeding does not change existing accounts. Use a new DB_PATH for a new demonstration instead of erasing immutable records.
-
-## Exact seeded statements
-
-Bakhtiari Auto Group, LLC — 3155 Stevens Creek San Jose CA 95117. The generated account number is a unique 12-digit number, not a real bank account.
-
-| Month | Opening | Deposits | Expenses | Ending |
-| --- | ---: | ---: | ---: | ---: |
-| June 2026 | $0 | $10,000 | $5,767 | $4,233 |
-| July 2026 | $4,233 | $15,000 | $5,884 | $13,349 |
-| August 2026 | $13,349 | $15,000 | $6,001 | $22,348 |
-| September 2026 | $22,348 | $15,000 | $6,118 | $31,230 |
-
-Each month has a deposit on the second plus 12 deterministic expenses. Every balance derives from integer-cent ledger entries. Four revision-1 PDFs are created in monthly/statements/. The source PDF has a displaced opening-balance table; this reconstruction follows its stated zero-opening and carry-forward rules and exact ending balances.
-
-## Using the workspaces
-
-Customers can view their own balance, transaction-derived chart, search/month-filter history, print history/account details, and update name/address only after confirming the current password. New registrations are customer-only and start at zero.
-
-Moderators select customer accounts, post positive credits or negative debits, and reverse mistakes with an opposite-signed new ledger entry. Original entries cannot be edited or deleted. Investment records can be created/edited with sector, status, target capital, risk and strategy; these records are not public.
-
-In Statements, choose a month, calculate the live preview, then issue a revision. Download its PDF from the archive and run its integrity check. PDFs contain statement dates, account identity, opening/closing amounts, deposits/debits, transaction running balances, revision and page numbers. Statements and statement APIs are moderator-only, as required by the surviving specification.
-
-Backdated transactions change the affected month AND later months' live opening balances. Issue replacement revisions for EVERY affected month. Earlier issued revisions remain immutable; no role can rewrite an issued document, including Tim. This resolves the source's editing language in favor of its immutable-ledger/revision requirement. Audit records capture operations. Integrity checks compare snapshot hashes, stored PDF bytes and filesystem archive bytes; they are not a substitute for independently secured backups.
-
-## Tim Power handover
-
-The About Us / Leadership section uses Tim's supplied portrait and biography. The biography primarily says Timothy Power, while the build document says Timothy Powers; the public source note preserves that discrepancy for his approval. No unsupported employment details, founding date, licensing or FDIC claims were invented.
-
-Tim will complete and approve banking licensing, FDIC and other regulatory information before public launch. This build deliberately identifies itself as a demonstration until those facts and operational approvals are verified. The requested www.siliconvalleybankandtrust.com domain has not been connected or modified.
-
-To provision a clean moderator without demonstration customers, stop the server and set DEMO_SEED=false and DB_PATH=data/handover.sqlite in .env. Then in PowerShell:
-
-```powershell
-$env:MODERATOR_EMAIL = "tpower@siliconvalleybankandtrust.com"
-$secret = Read-Host "Enter a unique moderator password (12 or more characters)" -AsSecureString
-$env:MODERATOR_PASSWORD = [System.Net.NetworkCredential]::new("", $secret).Password
-npm run create-moderator
-Remove-Item Env:MODERATOR_PASSWORD
-npm run dev
-```
-
-The administrative script does not promote public registrations and rejects demo passwords and existing email addresses. For password rotation of an existing moderator, stop the application and run the same script with MODERATOR_RESET=true and a unique new password; existing sessions are revoked. Keep .env and production credentials out of version control, archives and email. Deliver real credentials through a separate secure channel.
-
-## Build and verify
-
-```powershell
-npm run lint
-npm test
-npm run test:ui
-npm run build
-npm start
-```
-
-npm run test:ui uses installed Microsoft Edge to verify the public page, WebGL canvas, mobile sector dialog, portrait loading, customer login/logout, exact balance, moderator preview/integrity and PDF download. It starts its own local server on port 3005; that port must be free. On machines without Edge, install it or change channel in playwright.config.js and install the matching Playwright browser. The application itself does not require Edge.
-
-npm start serves dist and the protected APIs from one origin. With development settings it is still a local demonstration. Tests use independent temporary databases and HTTP servers; they verify exact monthly continuity, PDF text, server roles, CSRF/origin checks, hashed sessions/passwords, session rotation/expiry, customer isolation, unique accounts, immutability, reversals, investments, audit records, concurrency and moderator provisioning.
-
-## Production constraints
-
-This is a single-instance local banking prototype, NOT a certified live bank platform. Completing licensing/FDIC text alone does not make it suitable to hold real funds. Live launch also requires bank-approved core ledger/database, compliance review, identity verification, MFA, hardened hosting, backups/disaster recovery, monitoring, penetration testing and applicable legal approvals.
-
-Use NODE_ENV=production, DEMO_SEED=false, a fresh DB_PATH, and explicit HTTPS APP_ORIGIN. Seeded/default-password databases must never be deployed. Terminate HTTPS at an approved reverse proxy; TRUST_PROXY=true trusts exactly one proxy and is safe only if direct public access to Node is blocked. Cookies are always Secure, HttpOnly and SameSite=Strict. Server origin and CSRF enforcement remain mandatory. The Node process binds loopback by default. Keep database, statement archives and secrets readable only by authorized operators. Back up SQLite and its WAL consistently using approved SQLite backup tools; coordinate backups with immutable PDF archives.
-
-The original source's suggested HTTP hosts-file domain cannot safely carry its required Secure cookies, so it is not the default installation path. Localhost works without publishing or changing DNS. Public DNS requires the domain owner's authorization and hosting; no DNS is changed by this project.
-
-## Project tree
-
-```text
-SVBT/
-  .env.example
-  .gitignore
-  README.md
-  SOURCE.txt
-  package.json
-  package-lock.json
-  index.html
-  vite.config.js
-  eslint.config.js
-  playwright.config.js
-  public/tim-power.jpg
-  src/main.jsx
-  src/App.jsx
-  src/Portal.jsx
-  src/Scene.jsx
-  src/styles.css
-  server/index.js
-  server/db.js
-  server/services.js
-  server/pdf.js
-  server/seed.js
-  server/create-moderator.js
-  scripts/import-portrait.js
-  scripts/package.js
-  tests/banking.test.js
-  tests/pdf.test.js
-  tests/ui/workspace.spec.js
-  data/bank.sqlite (created at seed)
-  monthly/statements/*.pdf (created at seed)
-  dist/ (created at build)
-```
-
-SOURCE.txt provides the full contents of every project text file, including the dependency lockfile; the portrait is encoded with a base64 prefix. SVBT-complete.zip contains the complete files, bundled build and demonstration statements. No node_modules, private .env, database, original attachments or temporary tooling are included. Run npm ci after extraction. Source and archive can be regenerated with node scripts/package.js.
-
-## Design verification
-
-The site implements responsive navy/copper/ice styling, real extruded Three.js geometry, orbit controls, pause/reduced-motion handling, offscreen suspension and four procedural sector scenes. Inspect desktop and mobile browser widths and use a WebGL-enabled browser to evaluate the visual presentation. Automated build/API/PDF checks do not certify that the design meets a subjective visual standard.
+No changes have been pushed to GitHub or deployed to Render by this handoff.
+See VALIDATION.md for the checks actually run.
