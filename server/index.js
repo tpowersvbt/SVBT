@@ -40,7 +40,24 @@ function password(value, registration = false) {
 }
 function identifier(value) { if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) fail(400, 'Invalid record identifier.'); return Number(value); }
 export async function createApp(options = {}) {
-  const config = configuration(options), db = openDatabase(config.dbPath);
+  const config = configuration(options);
+  let dbPath = config.dbPath;
+  
+  // Force fresh database if demo seed is enabled
+  if (config.demoSeed) {
+    const fs = await import('fs');
+    const path = await import('path');
+    try {
+      // Remove old database files
+      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+      if (fs.existsSync(dbPath + '-shm')) fs.unlinkSync(dbPath + '-shm');
+      if (fs.existsSync(dbPath + '-wal')) fs.unlinkSync(dbPath + '-wal');
+    } catch (e) {
+      console.warn('Could not remove old database files:', e.message);
+    }
+  }
+  
+  const db = openDatabase(dbPath);
   let vite;
   try {
     if (config.production) {
