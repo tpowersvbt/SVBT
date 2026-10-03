@@ -65,8 +65,32 @@ export async function createApp(options = {}) {
     });
     app.use('/api', (req, res, next) => {
       res.set('Cache-Control', 'no-store');
-      if (req.get('origin') && req.get('origin') !== config.origin) return next(Object.assign(new Error('Request origin is not allowed.'), { status: 403 }));
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.get('origin') !== config.origin) return next(Object.assign(new Error('An exact matching Origin is required for write requests.'), { status: 403 }));
+      const requestOrigin = req.get('origin');
+      
+      // Allow configured origin, Render preview URLs, and localhost
+      const allowedOriginPatterns = [
+        config.origin,
+        'http://localhost:3000',
+        'http://localhost:3005',
+        /^https:\/\/svbt-[a-z0-9]+\.onrender\.com$/,
+        'https://siliconvalleybankandtrust.com'
+      ];
+      
+      const isOriginAllowed = (origin) => {
+        if (!origin) return true;
+        return allowedOriginPatterns.some(pattern => {
+          if (typeof pattern === 'string') return origin === pattern;
+          if (pattern instanceof RegExp) return pattern.test(origin);
+          return false;
+        });
+      };
+      
+      if (requestOrigin && !isOriginAllowed(requestOrigin)) {
+        return next(Object.assign(new Error('Request origin is not allowed.'), { status: 403 }));
+      }
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && requestOrigin && !isOriginAllowed(requestOrigin)) {
+        return next(Object.assign(new Error('An exact matching Origin is required for write requests.'), { status: 403 }));
+      }
       if (req.get('sec-fetch-site') === 'cross-site') return next(Object.assign(new Error('Cross-site requests are forbidden.'), { status: 403 }));
       next();
     });
