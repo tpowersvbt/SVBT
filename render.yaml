@@ -20,8 +20,8 @@ services:
       - key: TRUST_PROXY
         value: true
       - key: DEMO_SEED
-        value: false
-      - key: MODERATOR_EMAIL
+        value: true
+      - key: DEMO_MODERATOR_EMAIL
         value: tpower@siliconvalleybankandtrust.com
-      - key: MODERATOR_PASSWORD
-        value: ""
+      - key: DEMO_MODERATOR_PASSWORD
+        value: ModeratorGod!2026
