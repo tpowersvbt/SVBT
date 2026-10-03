@@ -1,27 +1,34 @@
+# Apply only after backing up/migrating any existing SQLite data and PDF archives.
 services:
   - type: web
-    name: svbt
+    name: svbt-rkqn
     runtime: node
     region: oregon
-    plan: free
+    plan: starter
+    numInstances: 1
     buildCommand: npm ci && npm run build
-    startCommand: NODE_ENV=production npm start
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: svbt-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "24"
       - key: APP_ORIGIN
         value: https://siliconvalleybankandtrust.com
-      - key: PORT
-        value: 3000
       - key: HOST
         value: 0.0.0.0
+      - key: PORT
+        value: "3000"
       - key: DB_PATH
-        value: ./data/bank.sqlite
+        value: /var/data/bank.sqlite
       - key: STATEMENT_DIR
-        value: ./monthly/statements
+        value: /var/data/statements
       - key: TRUST_PROXY
-        value: true
+        value: "true"
       - key: DEMO_SEED
-        value: false
-      - key: DEMO_MODERATOR_EMAIL
-        value: tpower@siliconvalleybankandtrust.com
-      - key: DEMO_MODERATOR_PASSWORD
-        value: svbt2026!
+        value: "false"
