@@ -35,7 +35,7 @@ function model(kind) {
 export default function Scene({ kind = 'brand', label }) {
   const host = useRef(null);
   const engine = useRef(null);
-  const [paused, setPaused] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [paused, setPaused] = useState(() => kind === 'brand' ? false : matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [failed, setFailed] = useState(false);
   const pauseRef = useRef(paused);
   useEffect(() => { pauseRef.current = paused; engine.current?.sync(); }, [paused]);
@@ -60,7 +60,7 @@ export default function Scene({ kind = 'brand', label }) {
     const rim = new THREE.DirectionalLight(0x8edbff, 4); rim.position.set(-4, 2, -3); scene.add(rim);
     let visible = false, frame = 0, last = 0, phase = 0, dirty = true;
     function draw() { if (visible && !document.hidden) renderer.render(scene, camera); }
-    function tick(time) { frame = 0; if (!visible || document.hidden || pauseRef.current) return; if (time - last >= 1000 / 30) { phase += 0.006; if (kind === 'brand') { object.rotation.y = Math.sin(phase) * 0.22; object.rotation.x = Math.sin(phase * 0.6) * 0.04; } else object.rotation.y += 0.002; key.position.x = Math.cos(phase) * 5; rim.intensity = 3.5 + Math.sin(phase) * 0.7; draw(); last = time; } frame = requestAnimationFrame(tick); }
+    function tick(time) { frame = 0; if (!visible || document.hidden || pauseRef.current) return; if (time - last >= 1000 / 30) { const delta = Math.min((time - last) / 1000, 0.1); phase += delta * (kind === 'brand' ? 0.55 : 0.18); if (kind === 'brand') { object.rotation.y = Math.sin(phase) * 0.6; object.rotation.x = Math.sin(phase * 0.6) * 0.08; } else object.rotation.y += delta * 0.06; key.position.x = Math.cos(phase) * 5; rim.intensity = 3.5 + Math.sin(phase) * 0.7; draw(); last = time; } frame = requestAnimationFrame(tick); }
     function sync() { cancelAnimationFrame(frame); frame = 0; if (visible && !document.hidden) { if (dirty || pauseRef.current) { draw(); dirty = false; } if (!pauseRef.current) frame = requestAnimationFrame(tick); } }
     engine.current = { sync, orbit: delta => { const offset = camera.position.clone().sub(controls.target); offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), delta); camera.position.copy(offset.add(controls.target)); controls.update(); draw(); } };
     const observer = new IntersectionObserver(entries => { visible = entries[0].isIntersecting; dirty = true; sync(); }); observer.observe(container);
