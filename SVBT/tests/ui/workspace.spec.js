@@ -56,4 +56,3 @@ test('moderator calculates preview, verifies archive and downloads an issued PDF
   await expect(page.locator('.investment-card')).toHaveCount(3);
 });
 
-

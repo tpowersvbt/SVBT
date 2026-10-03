@@ -29,7 +29,7 @@ export function renderStatement(snapshot, { brandedCopy = false } = {}) {
     for (const transaction of snapshot.transactions) {
       const description = `${transaction.description}${transaction.reversalOf ? ` (reverses #${transaction.reversalOf})` : ''}`;
       const height = Math.max(32, document.heightOfString(description, { width: 235 }) + 16);
-      if (document.y + height > 710) { document.addPage(); document.font('Helvetica-Bold').fontSize(14).text('BUSINESS CHECKING � CONTINUED').font('Helvetica').fontSize(9).moveDown(); }
+      if (document.y + height > 710) { document.addPage(); document.font('Helvetica-Bold').fontSize(14).text('BUSINESS CHECKING · CONTINUED').font('Helvetica').fontSize(9).moveDown(); }
       const y = document.y;
       document.font('Helvetica').text(`${transaction.date}\n#${transaction.id}`, 48, y, { width: 82 });
       document.text(description, 136, y, { width: 235 });
@@ -46,4 +46,3 @@ export function renderStatement(snapshot, { brandedCopy = false } = {}) {
     document.end();
   });
 }
-

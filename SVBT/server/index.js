@@ -77,7 +77,7 @@ function email(value) {
 
 function password(value, registration = false) {
 
-  if (typeof value !== 'string' || value.length > 1024 || value.length < (registration ? 12 : 1)) fail(400, registration ? 'Password must contain 12-1024 characters.' : 'Password is required.');
+  if (typeof value !== 'string' || value.length > 1024 || value.length < (registration ? 12 : 1)) fail(400, registration ? 'Password must contain 12–1024 characters.' : 'Password is required.');
 
   return value;
 
@@ -418,5 +418,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close(async () => { await app.locals.close(); process.exit(0); }));
 
 }
-
 
