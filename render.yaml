@@ -5,7 +5,7 @@ services:
     region: oregon
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: NODE_ENV=production npm start
+    startCommand: npm start
     envVars:
       - key: APP_ORIGIN
         value: https://siliconvalleybankandtrust.com
