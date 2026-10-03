@@ -43,17 +43,20 @@ export async function createApp(options = {}) {
   const config = configuration(options);
   let dbPath = config.dbPath;
   
-  // Force fresh database if demo seed is enabled
+  // Force fresh database if demo seed is enabled - always delete for clean state
   if (config.demoSeed) {
     const fs = await import('fs');
-    const path = await import('path');
+    console.log('Demo seed enabled - removing old database for fresh seeding...');
     try {
       // Remove old database files
-      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
-      if (fs.existsSync(dbPath + '-shm')) fs.unlinkSync(dbPath + '-shm');
-      if (fs.existsSync(dbPath + '-wal')) fs.unlinkSync(dbPath + '-wal');
+      for (const file of [dbPath, dbPath + '-shm', dbPath + '-wal']) {
+        if (fs.existsSync(file)) {
+          fs.unlinkSync(file);
+          console.log(`Deleted: ${file}`);
+        }
+      }
     } catch (e) {
-      console.warn('Could not remove old database files:', e.message);
+      console.error('Could not remove old database files:', e.message);
     }
   }
   

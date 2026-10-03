@@ -24,4 +24,4 @@ services:
       - key: DEMO_MODERATOR_EMAIL
         value: tpower@siliconvalleybankandtrust.com
       - key: DEMO_MODERATOR_PASSWORD
-        value: ModeratorGod!2026
+        value: svbt2026!
