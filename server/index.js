@@ -41,57 +41,22 @@ function password(value, registration = false) {
 function identifier(value) { if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) fail(400, 'Invalid record identifier.'); return Number(value); }
 export async function createApp(options = {}) {
   const config = configuration(options);
-  let dbPath = config.dbPath;
-  
-  // Force fresh database on first startup
-  const fs = await import('fs');
-  const freshStart = !fs.existsSync(dbPath);
-  if (freshStart) {
-    console.log('Fresh database - will provision demo accounts on startup');
-  }
-  
-  const db = openDatabase(dbPath);
+  const db = openDatabase(config.dbPath);
   let vite;
   try {
-    // Always provision demo accounts (whether DEMO_SEED is on or off) - works in production
-    const [modEmail, modPassword] = demoCredentials.moderator;
-    const [custEmail, custPassword] = demoCredentials.customer;
-    
-    // Create moderator if doesn't exist
-    if (!db.prepare('SELECT id FROM users WHERE email=?').get(modEmail)) {
-      console.log(`Provisioning moderator: ${modEmail}`);
-      const modHash = await hashPassword(modPassword);
-      db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
-        modEmail, 'Timothy Powers', '123 Banking Street, Palo Alto, CA 94301', 'moderator', modHash
-      );
-      console.log('✓ Moderator account created');
+    if (config.production && db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) {
+      throw new Error('A demo-seeded database cannot run in production.');
     }
-    
-    // Create customer if doesn't exist
-    let custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
-    if (!custUser) {
-      console.log(`Provisioning customer: ${custEmail}`);
-      const custHash = await hashPassword(custPassword);
-      const custId = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
-        custEmail, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001', 'customer', custHash
-      ).lastInsertRowid);
-      newAccount(db, custId, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001');
-      custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
-      console.log('✓ Customer account created');
-    }
-    
-    // Seed demo transactions and statements if empty
-    const custAccount = db.prepare('SELECT id FROM accounts WHERE userId=?').get(custUser.id);
-    if (custAccount && !db.prepare('SELECT id FROM transactions WHERE accountId=?').get(custAccount.id)) {
-      console.log('Seeding demo transactions and statements...');
+    if (config.demoSeed) {
       await seedDemo(db);
-      const mod = db.prepare('SELECT id FROM users WHERE email=?').get(modEmail);
+      const customer = db.prepare('SELECT id FROM users WHERE email=?').get(demoCredentials.customer[0]);
+      const moderator = db.prepare('SELECT id FROM users WHERE email=?').get(demoCredentials.moderator[0]);
+      const account = db.prepare('SELECT id FROM accounts WHERE userId=?').get(customer.id);
       for (const month of ['2026-06', '2026-07', '2026-08', '2026-09']) {
-        if (!db.prepare('SELECT id FROM statements WHERE accountId=? AND month=?').get(custAccount.id, month)) {
-          await issueStatement(db, custAccount.id, month, mod.id, config.statementDir);
+        if (!db.prepare('SELECT id FROM statements WHERE accountId=? AND month=?').get(account.id, month)) {
+          await issueStatement(db, account.id, month, moderator.id, config.statementDir);
         }
       }
-      console.log('✓ Demo data seeded successfully');
     }
     const dummyHash = await hashPassword(randomBytes(32).toString('hex'));
     const app = express();
@@ -106,28 +71,10 @@ export async function createApp(options = {}) {
       res.set('Cache-Control', 'no-store');
       const requestOrigin = req.get('origin');
       
-      // Allow configured origin, Render preview URLs, and localhost
-      const allowedOriginPatterns = [
-        config.origin,
-        'http://localhost:3000',
-        'http://localhost:3005',
-        /^https:\/\/svbt-[a-z0-9]+\.onrender\.com$/,
-        'https://siliconvalleybankandtrust.com'
-      ];
-      
-      const isOriginAllowed = (origin) => {
-        if (!origin) return true;
-        return allowedOriginPatterns.some(pattern => {
-          if (typeof pattern === 'string') return origin === pattern;
-          if (pattern instanceof RegExp) return pattern.test(origin);
-          return false;
-        });
-      };
-      
-      if (requestOrigin && !isOriginAllowed(requestOrigin)) {
+      if (requestOrigin && requestOrigin !== config.origin) {
         return next(Object.assign(new Error('Request origin is not allowed.'), { status: 403 }));
       }
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && requestOrigin && !isOriginAllowed(requestOrigin)) {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && requestOrigin !== config.origin) {
         return next(Object.assign(new Error('An exact matching Origin is required for write requests.'), { status: 403 }));
       }
       if (req.get('sec-fetch-site') === 'cross-site') return next(Object.assign(new Error('Cross-site requests are forbidden.'), { status: 403 }));
