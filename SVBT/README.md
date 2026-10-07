@@ -1,5 +1,9 @@
 # SVBT — Mr. Powers operations handoff
 
+> **Out of date — read [HANDOFF.md](HANDOFF.md) instead.** Staff sign-ins are now managed in the
+> Administration screens. The MODERATOR_* settings described below no longer do anything, and
+> DB_PATH/STATEMENT_DIR are ignored once `DATA_DIR=/var/data` is set. This page is kept only as history.
+
 Prepared from the supplied ffee4f56379c0707ec2a423e51a9cbc8c86ec6f4 archive.
 The uploaded archive is older than commit c435297 shown in the deployment log.
 This package is a reviewed replacement based on the supplied archive, not a merge of that later commit.
