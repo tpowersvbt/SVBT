@@ -41,3 +41,13 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .review-checkbox input { width:20px; height:20px; flex:none; }
 .workspace label.review-checkbox { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; text-align:left; }
 .workspace .review-checkbox input { width:20px; height:20px; min-height:20px; padding:0; margin:0; }
+
+
+/* Administration and public disclosures */
+.workspace label.checkbox { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:12px; margin:12px 0; text-align:left; font-size:13px; }
+.workspace .checkbox input { width:20px; height:20px; min-height:20px; padding:0; margin:0; flex:none; }
+.customer-notice p { white-space: pre-wrap; margin-bottom: 0; }
+.disclosure-text { overflow-wrap: anywhere; }
+.disclosure-text + .disclosure-text { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 24px; }
+.disclosure-text p { white-space: pre-wrap; }
+.footer-disclosures { display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px; padding-bottom:24px; }

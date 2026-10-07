@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from './App.jsx';
 import ProjectManager from './Projects.jsx';
 import LeadershipManager from './Leadership.jsx';
+import { CustomersAdmin, DisclosuresAdmin, EmployeesAdmin, InvestmentsAdmin, downloadPdf } from './Admin.jsx';
+
+const LEDGER_TABS = ['Overview', 'Transactions', 'Statements'];
 
 
 
@@ -48,7 +51,10 @@ function Chart({ transactions }) {
 
 export default function Portal({ user, api, onLogout, onUser }) {
 
-  const admin = user.role === 'moderator';
+  // Capabilities come from the server; the server re-checks every request.
+  const caps = user.capabilities || [];
+  const can = capability => caps.includes(capability);
+  const admin = can('customers');
 
   const [tab, setTab] = useState('Overview');
 
@@ -60,7 +66,7 @@ export default function Portal({ user, api, onLogout, onUser }) {
 
   const [profile, setProfile] = useState(null);
 
-  const [investments, setInvestments] = useState([]);
+  const [mine, setMine] = useState(null);
 
   const [audit, setAudit] = useState([]);
 
@@ -98,7 +104,7 @@ export default function Portal({ user, api, onLogout, onUser }) {
 
     return () => { active = false; };
 
-  }, [admin, refresh, api]);
+  }, [admin, refresh, api, tab]);
 
   useEffect(() => {
 
@@ -116,9 +122,15 @@ export default function Portal({ user, api, onLogout, onUser }) {
 
     let active = true;
 
-    if (!admin) return;
+    if (!admin) {
 
-    const requests = tab === 'Investments' ? [api('/admin/investments').then(v => active && setInvestments(v))] : tab === 'Audit' ? [api('/admin/audit').then(v => active && setAudit(v))] : tab === 'Statements' && accountId ? [api(`${base}/statements`).then(v => active && setArchive(v))] : [];
+      if (tab === 'Statements') { setMine(null); api('/account/statements').then(v => active && setMine(v)).catch(e => active && setMine({ error: e.message })); }
+
+      return () => { active = false; };
+
+    }
+
+    const requests = tab === 'Audit' ? [api('/admin/audit').then(v => active && setAudit(v))] : tab === 'Statements' && accountId ? [api(`${base}/statements`).then(v => active && setArchive(v))] : [];
 
     Promise.all(requests).catch(e => active && setError(e.message));
 
@@ -142,19 +154,11 @@ export default function Portal({ user, api, onLogout, onUser }) {
 
   }
 
-  async function saveInvestment(e) {
-
-    e.preventDefault(); const values = Object.fromEntries(new FormData(e.currentTarget));
-
-    await perform(async () => { values.targetCapital = cents(values.targetCapital); await api(`/admin/investments${edit.item?.id ? `/${edit.item.id}` : ''}`, { method: edit.item?.id ? 'PUT' : 'POST', body: JSON.stringify(values) }); setEdit(null); setRefresh(r => r + 1); }, 'Investment record saved.');
-
-  }
-
   async function saveProfile(e) {
 
     e.preventDefault(); const form = e.currentTarget; const values = Object.fromEntries(new FormData(form));
 
-    await perform(async () => { const result = await api('/profile', { method: 'PATCH', body: JSON.stringify(values) }); setProfile(result); onUser({ id: result.id, name: result.name, email: result.email, role: result.role }); form.elements.password.value = ''; setRefresh(r => r + 1); }, 'Personal details updated after password verification.');
+    await perform(async () => { const result = await api('/profile', { method: 'PATCH', body: JSON.stringify(values) }); setProfile(result); onUser({ ...user, name: result.name }); form.elements.password.value = ''; setRefresh(r => r + 1); }, 'Personal details updated after password verification.');
 
   }
 
@@ -166,27 +170,34 @@ export default function Portal({ user, api, onLogout, onUser }) {
 
   const rows = (data?.transactions || []).filter(t => (!filterMonth || t.date.startsWith(filterMonth)) && `${t.description} ${t.id} ${t.date} ${money(t.amount)}`.toLowerCase().includes(search.toLowerCase())).slice().reverse();
 
-  const tabs = admin ? ['Overview', 'Transactions', 'Statements', 'Projects', 'Leadership bio', 'Investments', 'Audit', 'Profile'] : ['Overview', 'Transactions', 'Account details', 'Profile'];
+  const tabs = admin ? [...LEDGER_TABS, 'Customers', can('employees') && 'Employees', can('investments') && 'Investments', can('disclosures') && 'Disclosures', can('content') && 'Projects', can('content') && 'Leadership bio', can('audit') && 'Audit', 'Profile'].filter(Boolean) : [...LEDGER_TABS, 'Account details', 'Profile'];
 
-  return <div className="workspace"><aside className="workspace-sidebar"><img className="workspace-logo" src="/brand/svbt-logo.png" alt="Silicon Valley Bank and Trust" /><span className="eyebrow">{admin ? 'OPERATIONS CONSOLE' : 'BUSINESS WORKSPACE'}</span><h3>{user.name}</h3><span className="role-badge">Server-verified {user.role}</span><nav aria-label="Workspace navigation">{tabs.map(t => <button key={t} className={tab === t ? 'active' : ''} aria-current={tab === t ? 'page' : undefined} onClick={() => { setTab(t); setError(''); setNotice(''); }}>{t}<span>↗</span></button>)}</nav><div className="sidebar-bottom"><p>Sample records only.<br />No real banking operations.</p><button className="text-button" disabled={busy} onClick={() => perform(onLogout)}>Log out ↗</button></div></aside><div className="workspace-main"><div className="workspace-heading"><div><span className="eyebrow">SVBT / {admin ? 'MODERATOR' : 'CUSTOMER'}</span><h1>{tab === 'Overview' ? 'Your financial perspective.' : tab}</h1></div><button className="text-button" disabled={busy || loading} onClick={() => { setRefresh(r => r + 1); }}>Refresh ↻</button></div>{admin && !['Projects', 'Leadership bio'].includes(tab) && <label className="account-select">Selected customer account<select value={accountId} onChange={e => { setAccountId(e.target.value); setError(''); setNotice(''); }} disabled={busy}><option value="" disabled>Select an account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name} · {a.number}</option>)}</select></label>}{error && <div className="error" role="alert">{error}<button className="text-button" onClick={() => setRefresh(r => r + 1)}>Retry data</button></div>}{notice && <div className="success" role="status">{notice}</div>}{loading && <p role="status">Loading verified account data…</p>}
+  const roleLabel = user.roleLabel || user.role;
 
-    {tab === 'Overview' && data && <><div className="balance-grid"><div className="panel balance-card"><span className="eyebrow">ACCOUNT LEDGER / USD</span><h2>{money(data.balance)}</h2><p>{data.account.name}</p><span className="muted">Account {data.account.number}</span></div><div className="panel"><span className="eyebrow">LEDGER ACTIVITY</span><h2>{data.transactions.length}</h2><p>Recorded transactions</p><span className="muted">Opening balance $0.00 · balance derived from ledger</span></div></div><section className="panel"><div className="panel-heading"><h3>Balance over time</h3><span className="eyebrow">ALL RECORDED ACTIVITY</span></div><Chart transactions={data.transactions} /></section><section className="panel"><div className="panel-heading"><h3>Recent activity</h3><button className="text-button" onClick={() => setTab('Transactions')}>View all ↗</button></div><Transactions rows={data.transactions.slice(-5).reverse()} all={data.transactions} /></section></>}
+  return <div className="workspace"><aside className="workspace-sidebar"><img className="workspace-logo" src="/brand/svbt-logo.png" alt="Silicon Valley Bank and Trust" /><span className="eyebrow">{admin ? 'OPERATIONS CONSOLE' : 'BUSINESS WORKSPACE'}</span><h3>{user.name}</h3><span className="role-badge">Server-verified {roleLabel}</span><nav aria-label="Workspace navigation">{tabs.map(t => <button key={t} className={tab === t ? 'active' : ''} aria-current={tab === t ? 'page' : undefined} onClick={() => { setTab(t); setError(''); setNotice(''); }}>{t}<span>↗</span></button>)}</nav><div className="sidebar-bottom"><p>Sample records only.<br />No real banking operations.</p><button className="text-button" disabled={busy} onClick={() => perform(onLogout)}>Log out ↗</button></div></aside><div className="workspace-main"><div className="workspace-heading"><div><span className="eyebrow">SVBT / {String(roleLabel).toUpperCase()}</span><h1>{tab === 'Overview' ? 'Your financial perspective.' : tab}</h1></div><button className="text-button" disabled={busy || loading} onClick={() => { setRefresh(r => r + 1); }}>Refresh ↻</button></div>{admin && LEDGER_TABS.includes(tab) && !loading && !accounts.length && <p className="panel">No customer accounts yet. Add a customer under Customers to create one.</p>}{admin && LEDGER_TABS.includes(tab) && accounts.length > 0 && <label className="account-select">Selected customer account<select value={accountId} onChange={e => { setAccountId(e.target.value); setError(''); setNotice(''); }} disabled={busy}><option value="" disabled>Select an account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name} · {a.number}</option>)}</select></label>}{error && <div className="error" role="alert">{error}<button className="text-button" onClick={() => setRefresh(r => r + 1)}>Retry data</button></div>}{notice && <div className="success" role="status">{notice}</div>}{loading && <p role="status">Loading verified account data…</p>}
+
+    {tab === 'Overview' && data && <>{data.notice && <section className="panel customer-notice" role="note"><span className="eyebrow">NOTICE</span><p>{data.notice}</p></section>}<div className="balance-grid"><div className="panel balance-card"><span className="eyebrow">ACCOUNT LEDGER / USD</span><h2>{money(data.balance)}</h2><p>{data.account.name}</p><span className="muted">Account {data.account.number}</span></div><div className="panel"><span className="eyebrow">LEDGER ACTIVITY</span><h2>{data.transactions.length}</h2><p>Recorded transactions</p><span className="muted">Opening balance $0.00 · balance derived from ledger</span></div></div><section className="panel"><div className="panel-heading"><h3>Balance over time</h3><span className="eyebrow">ALL RECORDED ACTIVITY</span></div><Chart transactions={data.transactions} /></section><section className="panel"><div className="panel-heading"><h3>Recent activity</h3><button className="text-button" onClick={() => setTab('Transactions')}>View all ↗</button></div><Transactions rows={data.transactions.slice(-5).reverse()} all={data.transactions} /></section></>}
 
     {tab === 'Transactions' && data && <><div className="toolbar"><label>Search ledger<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Description, entry, date or amount" /></label><label>Month<select value={filterMonth} onChange={e => setFilterMonth(e.target.value)}><option value="">All months</option>{data.monthly.map(m => <option key={m.month}>{m.month}</option>)}</select></label>{admin ? <button className="button small" disabled={busy} onClick={() => setEdit({ type: 'post' })}>Post transaction +</button> : <button className="text-button" onClick={() => window.print()}>Print history ↗</button>}</div><section className="panel"><div className="panel-heading"><h3>Immutable transaction ledger</h3><span>{rows.length} entries</span></div><p className="fine-print">{admin ? 'Corrections create an opposite signed entry. Original entries cannot be edited or deleted.' : 'Read-only account history. Your balance reflects all entries, including recorded corrections.'}</p><Transactions rows={rows} all={data.transactions} reverse={admin ? t => setEdit({ type: 'reverse', item: t }) : null} /></section><section className="panel"><h3>Monthly history</h3><div className="table-scroll"><table><thead><tr><th>Month</th><th>Opening</th><th>Deposits</th><th>Debits</th><th>Closing</th></tr></thead><tbody>{data.monthly.map(m => <tr key={m.month}><td><button className="text-button" onClick={() => setFilterMonth(m.month)}>{m.month}</button></td><td>{money(m.opening)}</td><td>{money(m.deposits)}</td><td>{money(m.debits)}</td><td>{money(m.closing)}</td></tr>)}</tbody></table></div>{!data.monthly.length && <p>No monthly activity yet.</p>}</section></>}
 
-    {tab === 'Account details' && data && <section className="panel"><h3>Business checking · operations review</h3><dl><dt>Account holder</dt><dd>{data.account.name}</dd><dt>Account number</dt><dd>{data.account.number}</dd><dt>Address</dt><dd>{data.account.address}</dd><dt>Currency</dt><dd>USD · integer cents ledger</dd><dt>Balance</dt><dd>{money(data.balance)}</dd></dl><button className="text-button" onClick={() => window.print()}>Print account details ↗</button><p className="fine-print">Investment records and issued statements are restricted to moderators.</p></section>}
+    {tab === 'Account details' && data && <section className="panel"><h3>Business checking · operations review</h3><dl><dt>Account holder</dt><dd>{data.account.name}</dd><dt>Account number</dt><dd>{data.account.number}</dd><dt>Address</dt><dd>{data.account.address}</dd><dt>Currency</dt><dd>USD · integer cents ledger</dd><dt>Balance</dt><dd>{money(data.balance)}</dd></dl><button className="text-button" onClick={() => window.print()}>Print account details ↗</button><p className="fine-print">Sample review account. This is not a real bank account. Statements appear under Statements when the operator makes them available.</p></section>}
+
+    {!admin && tab === 'Statements' && <section className="panel"><h3>Your statements</h3>{!mine ? <p role="status">Loading statements…</p> : mine.error ? <p>{mine.error}</p> : <><p className="fine-print">Statements for this sample review account. No real funds are held.</p>{mine.files.map(f => <article className="archive-row" key={`f${f.id}`}><div><h4>{f.month} · {f.title} {f.supersedes && <span className="role-badge">Corrected version</span>}</h4>{f.note && <p className="fine-print">{f.note}</p>}</div><div className="archive-actions"><button className="text-button" disabled={busy} onClick={() => perform(() => downloadPdf(`/account/files/${f.id}/pdf`, f.filename), 'Statement PDF downloaded.')}>Download PDF ↗</button></div></article>)}{mine.issued.map(s => <article className="archive-row" key={`s${s.id}`}><div><h4>{s.month} <span className="role-badge">Sample statement</span> <span className="role-badge">Revision {s.revision}</span></h4><p>{money(s.closing)} closing · Issued {new Date(s.issuedAt).toLocaleDateString()}</p></div><div className="archive-actions"><button className="text-button" disabled={busy} onClick={() => perform(() => downloadPdf(`/account/statements/${s.id}/pdf`, `statement-${s.month}-r${s.revision}.pdf`), 'Statement PDF downloaded.')}>Download PDF ↗</button></div></article>)}{!mine.files.length && !mine.issued.length && <p>No statements yet.</p>}</>}</section>}
 
     {tab === 'Profile' && profile && <section className="panel profile-panel"><h3>Personal details</h3><p>Confirm your current login password to update your name and address. This does not change your password.</p><form onSubmit={saveProfile} key={profile.name + profile.address}><Field label="Name" name="name" defaultValue={profile.name} required maxLength={200} autoComplete="name" /><Field label="Address" name="address" defaultValue={profile.address} required maxLength={500} autoComplete="street-address" /><Field label="Email · read only" value={profile.email} readOnly type="email" /><Field label="Current password for verification" name="password" type="password" required autoComplete="current-password" /><button className="button" disabled={busy}>{busy ? 'Verifying…' : 'Verify and save details ↗'}</button></form></section>}
 
     {admin && tab === 'Statements' && accountId && <><section className="panel"><h3>Live ledger preview</h3><p>A live calculation, not an issued statement. Backdated entries change this and later months. Issue new revisions for every affected month; existing PDFs stay unchanged.</p><div className="toolbar"><Field label="Statement month" type="month" value={month} onChange={e => { setMonth(e.target.value); setPreview(null); }} required /><button className="button small" disabled={busy || !month} onClick={() => perform(async () => setPreview(await api(`${base}/preview?month=${encodeURIComponent(month)}`)))}>Calculate preview ↗</button></div>{preview && <><div className="preview-account"><strong>{preview.account.name}</strong><span>{preview.account.number} · {preview.account.address}</span></div><div className="stat-grid">{['opening', 'deposits', 'debits', 'closing'].map(k => <div key={k}><span>{k}</span><strong>{money(preview[k])}</strong></div>)}</div><Transactions rows={preview.transactions} running /><button className="button" disabled={busy || preview.month !== month} onClick={() => perform(async () => { await api(`${base}/statements`, { method: 'POST', body: JSON.stringify({ month }) }); setArchive(await api(`${base}/statements`)); }, 'Immutable statement revision issued.')}>{busy ? 'Issuing…' : `Issue ${month} revision ↗`}</button></>}</section><section className="panel"><h3>Issued statement archive</h3><p className="fine-print">Download a branded copy of any issued snapshot, or its archived original. Both use the same issued figures. Integrity checks validate the original archive.</p>{archive.length ? archive.map(s => <article className="archive-row" key={s.id}><div><h4>{s.month} <span className="role-badge">Revision {s.revision}</span></h4><p>{money(s.closing)} closing · Issued {new Date(s.issuedAt).toLocaleString()}</p><details><summary>Snapshot hash</summary><code>{s.hash}</code></details>{integrity[s.id] && <p className={integrity[s.id].valid ? 'positive' : 'error'} role="status">{integrity[s.id].valid ? 'Integrity verified' : 'Integrity failed — do not rely on this revision'}</p>}</div><div className="archive-actions"><button className="text-button" disabled={busy} onClick={() => pdf(s, true)}>Original PDF</button><button className="text-button" disabled={busy} onClick={() => pdf(s)}>Download branded PDF ↗</button><button className="text-button" disabled={busy} onClick={() => perform(async () => { const result = await api(`/admin/statements/${s.id}/integrity`); setIntegrity(i => ({ ...i, [s.id]: result })); })}>Check integrity</button></div></article>) : <p>No issued statements for this account.</p>}</section></>}
 
-    {admin && tab === 'Projects' && <ProjectManager api={api} />}
-    {admin && tab === 'Leadership bio' && <LeadershipManager api={api} />}
-    {admin && tab === 'Investments' && <section className="panel"><div className="panel-heading"><h3>Restricted investment records</h3><button className="button small" disabled={busy} onClick={() => setEdit({ type: 'investment' })}>Create record +</button></div><p className="fine-print">Internal review records, not investment offers or verified valuations.</p><div className="investment-grid">{investments.map(i => <article className="investment-card" key={i.id}><span className="role-badge">{i.status}</span><h3>{i.sector}</h3><h4>{money(i.targetCapital)}</h4><span className="eyebrow">TARGET CAPITAL</span><p><strong>Risk:</strong> {i.risk}</p><p>{i.strategy}</p><button className="link-arrow" onClick={() => setEdit({ type: 'investment', item: i })}>Edit record ↗</button></article>)}</div>{!investments.length && <p>No investment records. Create a record to begin.</p>}</section>}
+    {admin && tab === 'Customers' && <CustomersAdmin api={api} user={user} />}
+    {can('employees') && tab === 'Employees' && <EmployeesAdmin api={api} user={user} />}
+    {can('investments') && tab === 'Investments' && <InvestmentsAdmin api={api} />}
+    {can('disclosures') && tab === 'Disclosures' && <DisclosuresAdmin api={api} />}
+    {can('content') && tab === 'Projects' && <ProjectManager api={api} />}
+    {can('content') && tab === 'Leadership bio' && <LeadershipManager api={api} />}
 
-    {admin && tab === 'Audit' && <section className="panel"><h3>Operation audit trail</h3><div className="table-scroll"><table><thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Target</th><th>Details</th></tr></thead><tbody>{audit.map(a => <tr key={a.id}><td>{a.createdAt || a.at || a.timestamp}</td><td>{a.action}</td><td>{a.actorId ?? 'Anonymous'}</td><td>{a.entity ?? a.targetId ?? a.target}</td><td><details><summary>View payload</summary><pre>{JSON.stringify(a.details, null, 2)}</pre></details></td></tr>)}</tbody></table></div>{!audit.length && <p>No audit records available.</p>}</section>}
+    {can('audit') && tab === 'Audit' && <section className="panel"><h3>Operation audit trail</h3><div className="table-scroll"><table><thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Target</th><th>Details</th></tr></thead><tbody>{audit.map(a => <tr key={a.id}><td>{a.createdAt || a.at || a.timestamp}</td><td>{a.action}</td><td>{a.actorId ?? 'Anonymous'}</td><td>{a.entity ?? a.targetId ?? a.target}</td><td><details><summary>View payload</summary><pre>{JSON.stringify(a.details, null, 2)}</pre></details></td></tr>)}</tbody></table></div>{!audit.length && <p>No audit records available.</p>}</section>}
 
-    </div>{edit && <Modal title={edit.type === 'post' ? 'Post a ledger entry.' : edit.type === 'reverse' ? `Reverse entry #${edit.item.id}.` : edit.item ? 'Edit investment record.' : 'Create investment record.'} onClose={() => !busy && setEdit(null)}>{error && <div className="error" role="alert">{error}</div>}{edit.type === 'investment' ? <form onSubmit={saveInvestment}><Field label="Sector" name="sector" defaultValue={edit.item?.sector || ''} required maxLength={100} list="investment-sectors" /><datalist id="investment-sectors">{['Startup technologies', 'Small data centers', 'REITs', 'New home builders'].map(v => <option key={v} value={v} />)}</datalist><Field label="Status" name="status" defaultValue={edit.item?.status || 'Review'} required maxLength={100} /><Field label="Target capital · USD" name="targetCapital" type="number" step="0.01" min="0" max="1000000000" defaultValue={edit.item ? edit.item.targetCapital / 100 : ''} required /><Field label="Risk" name="risk" defaultValue={edit.item?.risk || ''} required maxLength={200} /><label>Strategy<textarea name="strategy" defaultValue={edit.item?.strategy || ''} required maxLength={2000} rows={5} /></label><button className="button" disabled={busy}>{busy ? 'Saving…' : 'Save investment record ↗'}</button></form> : <form onSubmit={saveEntry}><p>{edit.type === 'reverse' ? `${edit.item.description} · ${money(edit.item.amount)}. A correction of ${money(-edit.item.amount)} will be recorded; the original remains unchanged.` : `Selected account: ${data?.account.name}. Positive amounts credit the account; negative amounts debit it.`}</p><Field label="Ledger date" name="date" type="date" defaultValue={today()} min={edit.type === 'reverse' ? edit.item.date : '1900-01-01'} required />{edit.type === 'reverse' ? <Field label="Reason for reversal" name="reason" required maxLength={250} /> : <><Field label="Description" name="description" required maxLength={300} /><Field label="Signed amount · USD" name="amount" type="number" step="0.01" required max="1000000000" min="-1000000000" /></>}<button className="button" disabled={busy}>{busy ? 'Recording…' : edit.type === 'reverse' ? 'Record reversal ↗' : 'Post transaction ↗'}</button></form>}</Modal>}</div>;
+    </div>{edit && <Modal title={edit.type === 'post' ? 'Post a ledger entry.' : edit.type === 'reverse' ? `Reverse entry #${edit.item.id}.` : ''} onClose={() => !busy && setEdit(null)}>{error && <div className="error" role="alert">{error}</div>}<form onSubmit={saveEntry}><p>{edit.type === 'reverse' ? `${edit.item.description} · ${money(edit.item.amount)}. A correction of ${money(-edit.item.amount)} will be recorded; the original remains unchanged.` : `Selected account: ${data?.account.name}. Positive amounts credit the account; negative amounts debit it.`}</p><Field label="Ledger date" name="date" type="date" defaultValue={today()} min={edit.type === 'reverse' ? edit.item.date : '1900-01-01'} required />{edit.type === 'reverse' ? <Field label="Reason for reversal" name="reason" required maxLength={250} /> : <><Field label="Description" name="description" required maxLength={300} /><Field label="Signed amount · USD" name="amount" type="number" step="0.01" required max="1000000000" min="-1000000000" /></>}<button className="button" disabled={busy}>{busy ? 'Recording…' : edit.type === 'reverse' ? 'Record reversal ↗' : 'Post transaction ↗'}</button></form></Modal>}</div>;
 
 }
 

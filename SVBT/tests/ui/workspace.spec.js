@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('moderator publishes projects and reviews biography without exposing private drafts', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Moderator login', exact: true }).click();
+  await page.getByRole('button', { name: 'Staff login', exact: true }).click();
   await page.getByLabel('Email', { exact: true }).fill('tpower@siliconvalleybankandtrust.com');
   await page.getByLabel('Password', { exact: true }).fill('ModeratorGod!2026');
   await page.getByRole('button', { name: /Sign in securely/ }).click();
@@ -78,7 +78,7 @@ test('customer signs in with Secure localhost cookies, reads exact balance and l
 
 test('moderator calculates preview, verifies archive and downloads an issued PDF', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: /Moderator access/ }).click();
+  await page.getByRole('button', { name: /Staff access/ }).click();
   await page.getByLabel('Email', { exact: true }).fill('tpower@siliconvalleybankandtrust.com');
   await page.getByLabel('Password', { exact: true }).fill('ModeratorGod!2026');
   await page.getByRole('button', { name: /Sign in securely/ }).click();
