@@ -12,6 +12,7 @@
     "start": "node server/index.js",
     "seed": "node server/seed.js",
     "promote-owner": "node server/promote-owner.js",
+    "backup": "node server/backup.js",
     "test": "node --test tests/*.test.js",
     "test:ui": "playwright test",
     "lint": "eslint src server tests vite.config.js"

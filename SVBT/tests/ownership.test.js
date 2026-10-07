@@ -12,6 +12,7 @@ import { digest, integrity } from '../server/services.js';
 import { promoteOwner } from '../server/promote-owner.js';
 import { assertCanManageEmployee } from '../server/permissions.js';
 import { dataPaths } from '../server/paths.js';
+import { backup } from '../server/backup.js';
 
 const origin = 'http://localhost:3000';
 const OWNER = 'tpower@siliconvalleybankandtrust.com';
@@ -63,6 +64,22 @@ test('DATA_DIR keeps the database, statements and uploads together; DATA_DIR win
   assert.deepEqual(dataPaths({ DATA_DIR: '/var/data', DB_PATH: './data/bank.sqlite', STATEMENT_DIR: './monthly/statements' }), { dataDir: '/var/data', dbPath: '/var/data/bank.sqlite', statementDir: '/var/data/statements', uploadDir: '/var/data/uploads' });
   const legacy = dataPaths({});
   assert.ok(legacy.dbPath.endsWith('/data/bank.sqlite') && legacy.statementDir.endsWith('/monthly/statements'));
+});
+
+test('backup writes a checked database snapshot plus statement files, and refuses when there is no database', async () => {
+  const fx = await fixture();
+  const out = mkdtempSync(join(tmpdir(), 'svbt-backup-'));
+  try {
+    const paths = { dbPath: fx.app.locals.config.dbPath, statementDir: fx.app.locals.config.statementDir, uploadDir: fx.app.locals.config.uploadDir };
+    const result = backup(paths, out);
+    assert.equal(result.users, count(fx.db, 'users'));
+    assert.equal(result.statements, count(fx.db, 'statements'));
+    const copy = new DatabaseSync(join(result.target, 'bank.sqlite'), { readOnly: true });
+    assert.equal(count(copy, 'transactions'), count(fx.db, 'transactions'));
+    copy.close();
+    assert.deepEqual(readdirSync(join(result.target, 'statements')).sort(), readdirSync(paths.statementDir).sort());
+    assert.throws(() => backup({ ...paths, dbPath: join(out, 'missing.sqlite') }, out), /Nothing was backed up/);
+  } finally { await fx.close(); rmSync(out, { recursive: true, force: true }); }
 });
 
 test('migration and owner promotion on a COPY of the production backup, then two restarts', { skip: !existsSync(BACKUP_DB) && 'backup not present' }, async () => {
