@@ -16,17 +16,17 @@ services:
         sync: false
       - key: HOST
         value: 0.0.0.0
-      - key: DB_PATH
-        value: /var/data/bank.sqlite
-      - key: STATEMENT_DIR
-        value: /var/data/statements
+      - key: DATA_DIR
+        value: /var/data
       - key: TRUST_PROXY
         value: true
       - key: DEMO_SEED
         value: false
       - key: SAMPLE_DATA
         value: true
-      - key: MODERATOR_EMAIL
+      # Optional email delivery for staff invitations and password links (Resend).
+      # Leave unset and Administration shows the link on screen to copy instead.
+      - key: RESEND_API_KEY
         sync: false
-      - key: MODERATOR_PASSWORD
+      - key: EMAIL_FROM
         sync: false

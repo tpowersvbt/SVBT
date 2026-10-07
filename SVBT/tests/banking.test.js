@@ -4,9 +4,8 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { execFileSync } from 'node:child_process';
 import { createApp } from '../server/index.js';
-import { openDatabase, verifyPassword } from '../server/db.js';
+import { verifyPassword } from '../server/db.js';
 import { digest } from '../server/services.js';
 
 const origin = 'http://localhost:3000';
@@ -57,7 +56,7 @@ test('project and biography publishing keeps drafts private and requires moderat
 });
 async function fixture(options = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'svbt-test-'));
-  const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), demoSeed: true, ...options });
+  const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), uploadDir: join(directory, 'uploads'), demoSeed: true, ...options });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -338,31 +337,4 @@ test('persistent demo startup is idempotent and concurrent statement issuance is
     assert.equal(next.data.revision, 2 + successful.length);
     for (const response of [...successful, next]) assert.equal((await admin.request(`/admin/statements/${response.data.id}/integrity`)).data.valid, true);
   } finally { await f.close(); }
-});
-
-test('server-only moderator provisioning requires unique non-demo credentials', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'svbt-provision-'));
-  const env = { ...process.env, NODE_ENV: 'test', DEMO_SEED: 'false', DB_PATH: join(directory, 'bank.sqlite'), MODERATOR_EMAIL: 'operations@example.com', MODERATOR_PASSWORD: 'UniqueOperations!2026' };
-  try {
-    execFileSync(process.execPath, ['server/create-moderator.js'], { env, stdio: 'pipe' });
-    const db = openDatabase(env.DB_PATH);
-    const user = db.prepare('SELECT * FROM users').get();
-    assert.equal(user.role, 'moderator');
-    assert.equal(user.email, env.MODERATOR_EMAIL);
-    assert.ok(await verifyPassword(env.MODERATOR_PASSWORD, user.passwordHash));
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM accounts').get().n, 0);
-    db.close();
-    assert.throws(() => execFileSync(process.execPath, ['server/create-moderator.js'], { env, stdio: 'pipe' }), /email already exists/);
-    assert.throws(() => execFileSync(process.execPath, ['server/create-moderator.js'], { env: { ...env, MODERATOR_PASSWORD: 'ModeratorGod!2026' }, stdio: 'pipe' }), /demonstration password/);
-    const rotation = { ...env, MODERATOR_RESET: 'true', MODERATOR_PASSWORD: 'RotatedOperations!2026' };
-    const beforeReset = openDatabase(env.DB_PATH);
-    beforeReset.prepare('INSERT INTO sessions(tokenHash,userId,csrfToken,expiresAt) VALUES (?,?,?,?)').run(digest('old-session'), user.id, 'csrf', Date.now() + 100000);
-    beforeReset.close();
-    execFileSync(process.execPath, ['server/create-moderator.js'], { env: rotation, stdio: 'pipe' });
-    const afterReset = openDatabase(env.DB_PATH);
-    assert.ok(await verifyPassword(rotation.MODERATOR_PASSWORD, afterReset.prepare('SELECT passwordHash FROM users WHERE id=?').get(user.id).passwordHash));
-    assert.equal(afterReset.prepare('SELECT COUNT(*) AS n FROM sessions WHERE userId=?').get(user.id).n, 0);
-    assert.ok(afterReset.prepare("SELECT id FROM audit WHERE action='moderator.password-reset'").get());
-    afterReset.close();
-  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

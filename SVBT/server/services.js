@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { atomic, audit } from './db.js';
 import { renderStatement } from './pdf.js';
 
@@ -82,10 +82,13 @@ export function statement(db, id) {
   if (!result) fail(404, 'Issued statement not found.');
   return result;
 }
-export function integrity(db, id) {
+// statementDir lets archives that were moved (for example to DATA_DIR=/var/data) still verify by file name.
+export function integrity(db, id, statementDir) {
   const row = statement(db, id);
   let archiveValid = false;
-  try { archiveValid = digest(readFileSync(row.archivePath)) === row.pdfHash; } catch {}
+  for (const path of [row.archivePath, ...(statementDir ? [join(statementDir, basename(row.archivePath))] : [])]) {
+    try { if (digest(readFileSync(path)) === row.pdfHash) { archiveValid = true; break; } } catch { /* try the next location */ }
+  }
   const snapshotValid = digest(row.snapshot) === row.hash, pdfValid = digest(row.pdf) === row.pdfHash;
   return { valid: snapshotValid && pdfValid && archiveValid, snapshotValid, pdfValid, archiveValid };
 }
@@ -110,15 +113,47 @@ export async function issueStatement(db, id, month, actorId, directory) {
     });
   } catch (error) { try { unlinkSync(moved ? archivePath : temporary); } catch {} throw error; }
 }
+export const INVESTMENT_KINDS = ['reit', 'land-development', 'data-center', 'startup', 'other'];
+function longText(value, label, max) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) fail(400, `${label} must be at most ${max} characters.`);
+  return value.trim();
+}
+// Saving edits the private working copy only. The public site shows the last published snapshot until it is published again.
 export function saveInvestment(db, id, values, actorId) {
   const data = [text(values.sector, 'Sector', 100), text(values.status, 'Status', 100), cents(values.targetCapital, true), text(values.risk, 'Risk', 200), text(values.strategy, 'Strategy', 2000)];
   if (data[2] < 0) fail(400, 'Target capital cannot be negative.');
+  if (values.kind !== undefined && !INVESTMENT_KINDS.includes(values.kind)) fail(400, 'Choose a valid investment type.');
+  const extra = { kind: values.kind, title: longText(values.title, 'Title', 150), summary: longText(values.summary, 'Summary', 500), publicDescription: longText(values.publicDescription, 'Public description', 6000), privateNotes: longText(values.privateNotes, 'Private notes', 6000) };
   return atomic(db, () => {
+    const now = new Date().toISOString();
     if (id) {
-      if (!db.prepare('UPDATE investments SET sector=?,status=?,targetCapital=?,risk=?,strategy=? WHERE id=?').run(...data, id).changes) fail(404, 'Investment not found.');
-    } else id = Number(db.prepare('INSERT INTO investments(sector,status,targetCapital,risk,strategy) VALUES (?,?,?,?,?)').run(...data).lastInsertRowid);
+      const row = db.prepare('SELECT * FROM investments WHERE id=?').get(id);
+      if (!row) fail(404, 'Investment not found.');
+      if (values.version !== undefined && values.version !== row.version) fail(409, 'This investment changed. Reload it before saving.');
+      db.prepare('UPDATE investments SET sector=?,status=?,targetCapital=?,risk=?,strategy=?,version=version+1,updatedAt=? WHERE id=?').run(...data, now, id);
+    } else id = Number(db.prepare('INSERT INTO investments(sector,status,targetCapital,risk,strategy,updatedAt) VALUES (?,?,?,?,?,?)').run(...data, now).lastInsertRowid);
+    for (const [column, value] of Object.entries(extra)) if (value !== undefined) db.prepare(`UPDATE investments SET ${column}=? WHERE id=?`).run(value, id);
     const result = db.prepare('SELECT * FROM investments WHERE id=?').get(id);
-    audit(db, actorId, 'investment.save', id, result);
+    audit(db, actorId, 'investment.save', id, { sector: result.sector, kind: result.kind, title: result.title, state: result.state, version: result.version });
     return result;
   });
 }
+// action: 'publish' copies the public fields into a snapshot; 'unpublish' returns it to a private draft; 'archive' hides it everywhere but keeps the record.
+export function setInvestmentState(db, id, action, actorId) {
+  return atomic(db, () => {
+    const row = db.prepare('SELECT * FROM investments WHERE id=?').get(id);
+    if (!row) fail(404, 'Investment not found.');
+    const now = new Date().toISOString();
+    if (action === 'publish') {
+      if (!row.title || !row.summary) fail(400, 'Add a public title and summary before publishing.');
+      const snapshot = JSON.stringify({ id: row.id, kind: row.kind, sector: row.sector, title: row.title, summary: row.summary, description: row.publicDescription, risk: row.risk });
+      db.prepare("UPDATE investments SET state='published',published=?,publishedAt=?,version=version+1,updatedAt=? WHERE id=?").run(snapshot, now, now, id);
+    } else if (action === 'unpublish' || action === 'archive') {
+      db.prepare('UPDATE investments SET state=?,published=NULL,publishedAt=NULL,version=version+1,updatedAt=? WHERE id=?').run(action === 'archive' ? 'archived' : 'draft', now, id);
+    } else fail(400, 'Unknown investment action.');
+    audit(db, actorId, `investment.${action}`, id, { title: row.title, previousState: row.state });
+    return db.prepare('SELECT * FROM investments WHERE id=?').get(id);
+  });
+}
+export const publicInvestments = db => db.prepare("SELECT published,publishedAt FROM investments WHERE state='published' AND published IS NOT NULL ORDER BY publishedAt DESC,id DESC").all().map(row => ({ ...JSON.parse(row.published), publishedAt: row.publishedAt }));
