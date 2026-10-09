@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync, renameSync, readFileSync } from 'node:fs';
+import { dirname, resolve, basename, join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
@@ -24,6 +24,16 @@ async function start() {
   const target = resolve(process.env.DB_PATH || 'data/bank.sqlite');
   const port = Number(process.env.PORT || 3000), host = process.env.HOST || '0.0.0.0';
   async function runApp() {
+    if (process.env.STATEMENT_DIR) {
+      const directory=resolve(process.env.STATEMENT_DIR);
+      mkdirSync(directory,{recursive:true});
+      const db=new DatabaseSync(target,{readOnly:true});
+      try { for(const row of db.prepare('SELECT archivePath,pdf,pdfHash FROM statements').all()) {
+        const file=join(directory,basename(row.archivePath));
+        if(createHash('sha256').update(row.pdf).digest('hex')!==row.pdfHash)throw new Error('Stored statement checksum mismatch.');
+        if(!existsSync(file))writeFileSync(file,Buffer.from(row.pdf),{mode:0o600});
+      } } finally {db.close();}
+    }
     const { createApp } = await import('./index.js');
     const app = await createApp();
     const server = app.listen(port, host, () => console.log('SVBT restored and running'));
