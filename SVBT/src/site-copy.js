@@ -1,0 +1,21 @@
+export const copyDefaults = {
+  "heroEyebrow": "A NEW PERSPECTIVE ON BUSINESS BANKING",
+  "heroTitle": "Built for what comes next.",
+  "heroText": "Ambitious ideas deserve a thoughtful financial foundation. Explore a banking experience shaped around the people building tomorrow.",
+  "focusTitle": "Where ambition meets opportunity.",
+  "focusText": "From a first idea to the infrastructure that makes it real. Four sectors. One disciplined perspective.",
+  "sectorDisclosure": "Not investment advice, a financing commitment or an offer of securities. Investment involves risk.",
+  "approachTitle": "Progress, with principle.",
+  "approachText": "The future moves quickly. Your foundation should hold steady.",
+  "ctaTitle": "See the bigger picture. Start with clarity.",
+  "ctaNote": "Contact our team to discuss your account and investment needs.",
+  "footerTagline": "A perspective for the next economy.",
+  "disclosures": "Contact Silicon Valley Bank and Trust for information about available services, eligibility and applicable disclosures.",
+  "principle1Title": "Clarity at every step",
+  "principle1Text": "A ledger-led workspace connects every transaction to the balance it creates. No hidden calculations. No invented performance.",
+  "principle2Title": "Discipline by design",
+  "principle2Text": "Recorded corrections preserve history. Issued statement revisions remain distinct from the live ledger.",
+  "principle3Title": "People before process",
+  "principle3Text": "A focused experience for founders, business owners and the operators behind the next economy.",
+  "announcement": ""
+};

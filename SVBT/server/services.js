@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { atomic, audit } from './db.js';
 import { renderStatement } from './pdf.js';
 
@@ -85,7 +85,9 @@ export function statement(db, id) {
 export function integrity(db, id) {
   const row = statement(db, id);
   let archiveValid = false;
-  try { archiveValid = digest(readFileSync(row.archivePath)) === row.pdfHash; } catch {}
+  try { archiveValid = digest(readFileSync(row.archivePath)) === row.pdfHash; } catch {
+    if (process.env.STATEMENT_DIR) { try { archiveValid = digest(readFileSync(join(process.env.STATEMENT_DIR, basename(row.archivePath)))) === row.pdfHash; } catch {} }
+  }
   const snapshotValid = digest(row.snapshot) === row.hash, pdfValid = digest(row.pdf) === row.pdfHash;
   return { valid: snapshotValid && pdfValid && archiveValid, snapshotValid, pdfValid, archiveValid };
 }
@@ -122,3 +124,4 @@ export function saveInvestment(db, id, values, actorId) {
     return result;
   });
 }
+
