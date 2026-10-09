@@ -1,3 +1,4 @@
+import { initializeAdministration, provisionHandoverOwner, effectiveUser, installAdministration, siteContent } from './administration.js';
 import 'dotenv/config';
 import { initializeLeadership, leadership, updateLeadership } from './leadership.js';
 import { initializeProjects, saveProject, publishProject, publicProjects } from './projects.js';
@@ -92,6 +93,7 @@ export async function createApp(options = {}) {
   const config = configuration(options);
 
   const db = openDatabase(config.dbPath);
+  initializeAdministration(db);
   initializeProjects(db);
   initializeLeadership(db);
 
@@ -129,6 +131,9 @@ export async function createApp(options = {}) {
 
     }
 
+    provisionHandoverOwner(db, config.production ? 'tpower@siliconvalleybankandtrust.com' : options.ownerEmail);
+
+    const publicUser = raw => { const user=effectiveUser(db,raw); return user ? {id:user.id,name:user.name,email:user.email,role:user.role} : null; };
     const dummyHash = await hashPassword(randomBytes(32).toString('hex'));
 
     const app = express();
@@ -165,9 +170,11 @@ export async function createApp(options = {}) {
 
     });
 
+    app.get('/api/site-content', (req,res)=>res.json(siteContent(db)));
+
     app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
-    app.use('/api', express.json({ limit: '16kb', strict: true }));
+    app.use('/api', (req, res, next) => express.json({ limit: req.path === '/admin/site-content' ? '128kb' : '16kb', strict: true })(req, res, next));
 
     const cookieName = 'svbt_session';
 
@@ -201,7 +208,7 @@ export async function createApp(options = {}) {
 
       if (/^[A-Za-z0-9_-]{43}$/.test(token)) req.session = db.prepare('SELECT * FROM sessions WHERE tokenHash=? AND expiresAt>?').get(digest(token), Date.now());
 
-      req.user = req.session?.userId ? db.prepare('SELECT * FROM users WHERE id=?').get(req.session.userId) : null;
+      req.user = effectiveUser(db, req.session?.userId ? db.prepare('SELECT * FROM users WHERE id=?').get(req.session.userId) : null);
 
       if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
 
@@ -221,7 +228,7 @@ export async function createApp(options = {}) {
 
     const auth = (req, res, next) => req.user ? next() : next(Object.assign(new Error('Sign in to access this resource.'), { status: 401 }));
 
-    const moderator = (req, res, next) => !req.user ? next(Object.assign(new Error('Sign in to access operations.'), { status: 401 })) : req.user.role === 'moderator' ? next() : next(Object.assign(new Error('Moderator permission is required.'), { status: 403 }));
+    const moderator = (req, res, next) => !req.user ? next(Object.assign(new Error('Sign in to access operations.'), { status: 401 })) : ['moderator','admin','owner'].includes(req.user.role) ? next() : next(Object.assign(new Error('Moderator permission is required.'), { status: 403 }));
 
     app.get('/api/session', (req, res) => res.json({ user: publicUser(req.user), csrfToken: req.session?.csrfToken || makeSession(req, res, null) }));
 
@@ -334,6 +341,7 @@ export async function createApp(options = {}) {
     app.get('/api/leadership', (req, res) => res.json(leadership(db).published));
     app.get('/api/projects', (req, res) => res.json(publicProjects(db)));
     app.use('/api/admin', moderator);
+    installAdministration(app, db, authenticate);
     app.get('/api/admin/leadership', (req, res) => res.json(leadership(db)));
     app.put('/api/admin/leadership', (req, res) => res.json(updateLeadership(db, req.body, req.user.id)));
     app.post('/api/admin/leadership/publish', (req, res) => res.json(updateLeadership(db, req.body, req.user.id, true)));
@@ -432,4 +440,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close(async () => { await app.locals.close(); process.exit(0); }));
 
 }
+
 
