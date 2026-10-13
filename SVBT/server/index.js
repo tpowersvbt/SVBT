@@ -52,6 +52,13 @@ export function configuration(options = {}) {
 
   if (parsed.origin !== origin || !['http:', 'https:'].includes(parsed.protocol) || (production && parsed.protocol !== 'https:')) throw new Error('APP_ORIGIN must be an exact origin, HTTPS in production.');
 
+  const origins = [...new Set([origin, ...(options.origins ?? (process.env.APP_ORIGINS || '').split(',').filter(Boolean))])];
+  for (const allowed of origins) {
+    let url;
+    try { url = new URL(allowed); } catch { throw new Error('APP_ORIGINS must contain exact valid origins.'); }
+    if (url.origin !== allowed || !['http:', 'https:'].includes(url.protocol) || (production && url.protocol !== 'https:')) throw new Error('APP_ORIGINS must contain exact origins, HTTPS in production.');
+  }
+
   const sampleData = options.sampleData ?? process.env.SAMPLE_DATA === 'true';
 
   const demoSeed = options.demoSeed ?? (process.env.DEMO_SEED === undefined ? !production : process.env.DEMO_SEED === 'true');
@@ -62,7 +69,7 @@ export function configuration(options = {}) {
 
   if (!Number.isSafeInteger(authRateLimit) || authRateLimit < 1) throw new Error('authRateLimit must be a positive integer.');
 
-  return { production, origin, demoSeed, sampleData, authRateLimit, frontend: options.frontend ?? true, dbPath: options.dbPath ?? resolve(process.env.DB_PATH || resolve(root, 'data/bank.sqlite')), statementDir: resolve(options.statementDir ?? process.env.STATEMENT_DIR ?? resolve(root, 'monthly/statements')), trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true', dev: options.dev ?? false };
+  return { production, origin, origins, demoSeed, sampleData, authRateLimit, frontend: options.frontend ?? true, dbPath: options.dbPath ?? resolve(process.env.DB_PATH || resolve(root, 'data/bank.sqlite')), statementDir: resolve(options.statementDir ?? process.env.STATEMENT_DIR ?? resolve(root, 'monthly/statements')), trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true', dev: options.dev ?? false };
 
 }
 
@@ -160,9 +167,9 @@ export async function createApp(options = {}) {
 
       
 
-      if (requestOrigin && requestOrigin !== config.origin) return next(Object.assign(new Error('Request origin is not allowed.'), { status: 403 }));
+      if (requestOrigin && !config.origins.includes(requestOrigin)) return next(Object.assign(new Error('Request origin is not allowed.'), { status: 403 }));
 
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && requestOrigin !== config.origin) return next(Object.assign(new Error('An exact matching Origin is required for write requests.'), { status: 403 }));
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !config.origins.includes(requestOrigin)) return next(Object.assign(new Error('An exact matching Origin is required for write requests.'), { status: 403 }));
 
       if (req.get('sec-fetch-site') === 'cross-site') return next(Object.assign(new Error('Cross-site requests are forbidden.'), { status: 403 }));
 
