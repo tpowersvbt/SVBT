@@ -42,3 +42,17 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .workspace label.review-checkbox { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; text-align:left; }
 .workspace .review-checkbox input { width:20px; height:20px; min-height:20px; padding:0; margin:0; }
 
+
+/* Published owner design settings */
+:root{--text:#e8f0f3;--button-background:#ce9c79;--button-text:#101822;--button-hover:#e1b898;--button-hover-text:#07111e;color:var(--text);background:var(--navy)}
+body{background-color:var(--navy);color:var(--text)}
+.button{background:var(--button-background);color:var(--button-text);border-color:var(--button-background)}
+.button:hover{background:var(--button-hover);color:var(--button-hover-text);border-color:var(--button-hover)}
+.panel,.modal,.investment-card{background-color:var(--panel)}
+.design-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px;margin:24px 0}.color-control{display:flex;align-items:center;gap:12px}.color-control input[type=color]{width:58px;height:48px;padding:4px}.design-preview{padding:24px;border:1px solid var(--border);margin:20px 0}.copy-search{margin:20px 0}.copy-field{border-bottom:1px solid var(--border);padding:16px 0}.copy-field small{display:block;color:var(--muted);margin-bottom:8px}.copy-field textarea{white-space:pre-wrap}.statement-note-text{white-space:pre-wrap}.transaction-id{white-space:normal;line-height:1.5}.theme-reset{margin-left:16px}
+@media print{body{color:#111;background:#fff}.panel{background:#fff}.design-preview{display:none}}
+.site-header{background:var(--navy)}
+input,textarea,select{background:var(--input-background,#091522);color:var(--input-text,#dfecf3);border-color:var(--border)}
+.sector-copy .link-arrow,.text-button,.link-arrow{color:var(--link-text,#d2dde3)}
+.sector-copy .link-arrow:hover,.text-button:hover,.link-arrow:hover{color:var(--copper)}
+@media print{input,textarea,select{color:#111;background:#fff}}

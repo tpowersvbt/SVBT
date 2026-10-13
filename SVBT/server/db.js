@@ -36,6 +36,8 @@ export function openDatabase(path) {
     CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE, name TEXT NOT NULL, address TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('customer','moderator')), passwordHash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY, userId INTEGER NOT NULL UNIQUE REFERENCES users(id), number TEXT NOT NULL UNIQUE CHECK(length(number)=12 AND number NOT GLOB '*[^0-9]*'), name TEXT NOT NULL, address TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS transactions(id INTEGER PRIMARY KEY, accountId INTEGER NOT NULL REFERENCES accounts(id), date TEXT NOT NULL, description TEXT NOT NULL, amount INTEGER NOT NULL CHECK(typeof(amount)='integer' AND amount != 0 AND abs(amount)<=100000000000), reversalOf INTEGER UNIQUE REFERENCES transactions(id), actorId INTEGER REFERENCES users(id), createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+    CREATE TABLE IF NOT EXISTS transaction_details(transactionId INTEGER PRIMARY KEY REFERENCES transactions(id), referenceId TEXT NOT NULL DEFAULT '', occurredAt TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', version INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS statement_notes(accountId INTEGER NOT NULL REFERENCES accounts(id), month TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', version INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(accountId,month));
     CREATE TABLE IF NOT EXISTS sessions(tokenHash TEXT PRIMARY KEY, userId INTEGER REFERENCES users(id), csrfToken TEXT NOT NULL, expiresAt INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS statements(id INTEGER PRIMARY KEY, accountId INTEGER NOT NULL REFERENCES accounts(id), month TEXT NOT NULL, revision INTEGER NOT NULL, issuedAt TEXT NOT NULL, closing INTEGER NOT NULL, snapshot TEXT NOT NULL, hash TEXT NOT NULL, pdf BLOB NOT NULL, pdfHash TEXT NOT NULL, archivePath TEXT NOT NULL, UNIQUE(accountId,month,revision));
     CREATE TABLE IF NOT EXISTS investments(id INTEGER PRIMARY KEY, sector TEXT NOT NULL, status TEXT NOT NULL, targetCapital INTEGER NOT NULL CHECK(typeof(targetCapital)='integer' AND targetCapital>=0 AND targetCapital<=100000000000), risk TEXT NOT NULL, strategy TEXT NOT NULL);
@@ -82,3 +84,4 @@ export async function seedDemo(db, { moderatorId, customerPassword } = {}) {
     db.prepare("INSERT INTO metadata(key,value) VALUES ('demo-seeded',?)").run(String(accountId));
   });
 }
+

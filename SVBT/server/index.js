@@ -181,7 +181,7 @@ export async function createApp(options = {}) {
 
     app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
-    app.use('/api', (req, res, next) => express.json({ limit: req.path === '/admin/site-content' ? '128kb' : '16kb', strict: true })(req, res, next));
+    app.use('/api', (req, res, next) => express.json({ limit: req.path === '/admin/site-content' ? '128kb' : /^\/admin\/accounts\/\d+\/statement-notes$/.test(req.path) ? '32kb' : '16kb', strict: true })(req, res, next));
 
     const cookieName = 'svbt_session';
 

@@ -1,5 +1,6 @@
+import { themeDefaults } from '../src/site-copy.js';
 import { atomic, audit, hashPassword, newAccount } from './db.js';
-import { fail, text } from './services.js';
+import { fail, text, updateTransactionDetails, statementNotes, saveStatementNotes } from './services.js';
 
 export function initializeAdministration(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS staff_access(userId INTEGER PRIMARY KEY REFERENCES users(id), role TEXT NOT NULL CHECK(role IN ('owner','admin')));
@@ -73,11 +74,15 @@ export function installAdministration(app, db, authenticate) {
       audit(db,req.user.id,'account.update',id);
     });res.json({ok:true});
   });
+  app.put('/api/admin/transactions/:id/details',editor,(req,res)=>res.json(updateTransactionDetails(db,Number(req.params.id),req.body,req.user.id)));
+  app.get('/api/admin/accounts/:id/statement-notes',editor,(req,res)=>res.json(statementNotes(db,Number(req.params.id),req.query.month)));
+  app.put('/api/admin/accounts/:id/statement-notes',editor,(req,res)=>res.json(saveStatementNotes(db,Number(req.params.id),req.body,req.user.id)));
   app.get('/api/admin/site-content',editor,(req,res)=>res.json(siteContent(db)));
   app.put('/api/admin/site-content',editor,(req,res)=>{
     const {overrides,version}=req.body;
     if(!overrides||Array.isArray(overrides)||typeof overrides!=='object'||Object.keys(overrides).length>300)fail(400,'Invalid content.');
     for(const [key,value] of Object.entries(overrides))if(!/^[a-zA-Z0-9_.-]{1,100}$/.test(key)||typeof value!=='string'||value.length>6000)fail(400,'Invalid content field.');
+    for(const [key,value] of Object.entries(overrides)) if(key.startsWith('theme.') && (!(key in themeDefaults)||!/^#[0-9a-f]{6}$/i.test(value))) fail(400,'Choose a valid six-digit color.');
     atomic(db,()=>{
       if(siteContent(db).version!==version)fail(409,'Content changed. Reload before saving.');
       db.prepare('UPDATE site_content SET overrides=?,version=version+1 WHERE id=1').run(JSON.stringify(overrides));

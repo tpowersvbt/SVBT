@@ -6,15 +6,16 @@ const money = value => new Intl.NumberFormat('en-US', { style: 'currency', curre
 export function renderStatement(snapshot, { brandedCopy = false } = {}) {
   return new Promise((resolve, reject) => {
     const document = new PDFDocument({ size: 'LETTER', margin: 48, bufferPages: true, info: { Title: `Business checking ${snapshot.month} revision ${snapshot.revision}`, Author: 'Silicon Valley Bank and Trust' } });
+    const brand = snapshot.statementBranding || {};
     const chunks = [];
     document.on('data', chunk => chunks.push(chunk));
     document.on('error', reject);
     document.on('end', () => resolve(Buffer.concat(chunks)));
     document.image(logo, 48, 18, { fit: [90, 90] });
     document.font('Helvetica-Bold');
-    document.fillColor('#152a3b').fontSize(16).text('Silicon Valley Bank and Trust', 150, 45);
-    document.fontSize(10).text('SAMPLE RECORD - No real funds', 150, 65);
-    document.fontSize(21).text('BUSINESS CHECKING STATEMENT', 48, 105);
+    document.fillColor('#152a3b').fontSize(16).text(brand['statement.bankName'] || 'Silicon Valley Bank and Trust', 150, 45, {width:414,height:20,ellipsis:true});
+    document.fontSize(10).text(brand['statement.notice'] ?? 'SAMPLE RECORD - No real funds', 150, 65, {width:414,height:28,ellipsis:true});
+    document.fontSize(21).text(brand['statement.heading'] || 'BUSINESS CHECKING STATEMENT', 48, 105, {width:516,height:28,ellipsis:true});
     document.font('Helvetica').fontSize(10).text(`${snapshot.startDate} through ${snapshot.endDate} | USD | Revision ${snapshot.revision}`, 48, 137);
     document.text(`Issued ${snapshot.issuedAt}`);
     document.moveDown().font('Helvetica-Bold').text(snapshot.account.name);
@@ -27,7 +28,7 @@ export function renderStatement(snapshot, { brandedCopy = false } = {}) {
     document.text('RUNNING BALANCE', 465, headerY, { width: 99, align: 'right' });
     document.y = headerY + 20;
     for (const transaction of snapshot.transactions) {
-      const description = `${transaction.description}${transaction.reversalOf ? ` (reverses #${transaction.reversalOf})` : ''}`;
+      const description = [transaction.description + (transaction.reversalOf ? ` (reverses #${transaction.reversalOf})` : ''), transaction.referenceId && `Transaction ID: ${transaction.referenceId}`, transaction.occurredAt && `Transaction time (UTC): ${transaction.occurredAt}`, transaction.createdAt && `Recorded (UTC): ${transaction.createdAt}`, transaction.notes && `Notes: ${transaction.notes}`].filter(Boolean).join('\n');
       const height = Math.max(32, document.heightOfString(description, { width: 235 }) + 16);
       if (document.y + height > 710) { document.addPage(); document.font('Helvetica-Bold').fontSize(14).text('BUSINESS CHECKING · CONTINUED').font('Helvetica').fontSize(9).moveDown(); }
       const y = document.y;
@@ -36,6 +37,11 @@ export function renderStatement(snapshot, { brandedCopy = false } = {}) {
       document.text(money(transaction.amount), 375, y, { width: 80, align: 'right' });
       document.text(money(transaction.runningBalance), 465, y, { width: 99, align: 'right' });
       document.y = y + height;
+    }
+    if (snapshot.statementNotes) {
+      if (document.y > 650) document.addPage();
+      document.moveDown().font('Helvetica-Bold').fontSize(11).text(brand['statement.notesHeading'] || 'STATEMENT NOTES');
+      document.font('Helvetica').fontSize(10).text(snapshot.statementNotes, {width:516});
     }
     const pages = document.bufferedPageRange();
     for (let i = 0; i < pages.count; i++) {
@@ -46,3 +52,4 @@ export function renderStatement(snapshot, { brandedCopy = false } = {}) {
     document.end();
   });
 }
+

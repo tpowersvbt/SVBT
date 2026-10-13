@@ -1,3 +1,4 @@
+import { statementDefaults } from '../src/site-copy.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { join, basename } from 'node:path';
@@ -23,7 +24,7 @@ export function account(db, id) {
   if (!result) fail(404, 'Account not found.');
   return result;
 }
-export function transactions(db, id) { return db.prepare('SELECT * FROM transactions WHERE accountId=? ORDER BY date,id').all(id); }
+export function transactions(db, id) { return db.prepare('SELECT t.*,COALESCE(d.referenceId,\'\') referenceId,COALESCE(d.occurredAt,\'\') occurredAt,COALESCE(d.notes,\'\') notes,COALESCE(d.version,0) detailsVersion FROM transactions t LEFT JOIN transaction_details d ON d.transactionId=t.id WHERE t.accountId=? ORDER BY t.date,t.id').all(id); }
 export function preview(db, id, month) {
   if (typeof month !== 'string' || !/^(19|[2-9]\d)\d{2}-(0[1-9]|1[0-2])$/.test(month)) fail(400, 'A valid statement month (YYYY-MM) is required.');
   const owner = account(db, id);
@@ -38,7 +39,7 @@ export function preview(db, id, month) {
   });
   for (const value of [opening, deposits, debits, runningBalance]) if (!Number.isSafeInteger(value)) fail(409, 'Ledger total exceeds safe integer precision.');
   const [year, m] = month.split('-').map(Number);
-  return { account: owner, month, startDate: `${month}-01`, endDate: `${month}-${new Date(Date.UTC(year, m, 0)).getUTCDate()}`, opening, deposits, debits, closing: runningBalance, transactions: entries };
+  return { account: owner, month, startDate: `${month}-01`, endDate: `${month}-${new Date(Date.UTC(year, m, 0)).getUTCDate()}`, opening, deposits, debits, closing: runningBalance, statementBranding: statementBranding(db), statementNotes: statementNotes(db, id, month).notes, transactions: entries };
 }
 export function accountData(db, id) {
   const owner = account(db, id), rows = transactions(db, id);
@@ -125,3 +126,51 @@ export function saveInvestment(db, id, values, actorId) {
   });
 }
 
+
+function optionalText(value, name, max) {
+  if (value === undefined || value === '') return '';
+  if (typeof value !== 'string' || value.length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) fail(400, `${name} must be at most ${max} characters.`);
+  return value.trim();
+}
+function validMonth(month) {
+  if (typeof month !== 'string' || !/^(19|[2-9]\d)\d{2}-(0[1-9]|1[0-2])$/.test(month)) fail(400,'A valid statement month is required.');
+}
+export function statementNotes(db, id, month) {
+  account(db,id); validMonth(month);
+  return db.prepare('SELECT notes,version FROM statement_notes WHERE accountId=? AND month=?').get(id,month) || {notes:'',version:0};
+}
+export function saveStatementNotes(db,id,values,actorId) {
+  const notes=optionalText(values.notes,'Statement notes',6000);
+  return atomic(db,()=>{
+    const current=statementNotes(db,id,values.month);
+    if(current.version!==values.version) fail(409,'Statement notes changed. Reload before saving.');
+    db.prepare('INSERT INTO statement_notes(accountId,month,notes,version) VALUES (?,?,?,1) ON CONFLICT(accountId,month) DO UPDATE SET notes=excluded.notes,version=statement_notes.version+1').run(id,values.month,notes);
+    audit(db,actorId,'statement.notes',id,{month:values.month,version:current.version+1});
+    return statementNotes(db,id,values.month);
+  });
+}
+export function updateTransactionDetails(db,id,values,actorId) {
+  if(!Number.isSafeInteger(id))fail(400,'Invalid transaction ID.');
+  const referenceId=optionalText(values.referenceId,'Transaction reference ID',120),notes=optionalText(values.notes,'Transaction notes',2000);
+  let occurredAt=optionalText(values.occurredAt,'Transaction date/time',40);
+  if(occurredAt) {
+    if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(occurredAt)||!Number.isFinite(Date.parse(occurredAt)))fail(400,'A valid transaction timestamp in UTC is required.');
+    const normalized=new Date(occurredAt).toISOString();
+    if(normalized!==occurredAt && normalized.replace('.000Z','Z')!==occurredAt)fail(400,'Invalid transaction date/time.');
+    occurredAt=normalized;
+  }
+  return atomic(db,()=>{
+    const row=db.prepare('SELECT * FROM transactions WHERE id=?').get(id);if(!row)fail(404,'Transaction not found.');
+    const current=db.prepare('SELECT * FROM transaction_details WHERE transactionId=?').get(id);
+    if((current?.version||0)!==values.version)fail(409,'Transaction details changed. Reload before saving.');
+    db.prepare('INSERT INTO transaction_details(transactionId,referenceId,occurredAt,notes,version) VALUES (?,?,?,?,1) ON CONFLICT(transactionId) DO UPDATE SET referenceId=excluded.referenceId,occurredAt=excluded.occurredAt,notes=excluded.notes,version=transaction_details.version+1').run(id,referenceId,occurredAt,notes);
+    audit(db,actorId,'transaction.details',id,{referenceId,occurredAt,version:(current?.version||0)+1});
+    return transactions(db,row.accountId).find(t=>t.id===id);
+  });
+}
+
+function statementBranding(db) {
+  const table=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='site_content'").get();
+  const overrides=table?JSON.parse(db.prepare('SELECT overrides FROM site_content WHERE id=1').get()?.overrides||'{}'):{};
+  return Object.fromEntries(Object.entries(statementDefaults).map(([key,value])=>[key,overrides[key]??value]));
+}
