@@ -7,7 +7,7 @@ import { gunzipSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { openDatabase, newAccount } from '../server/db.js';
 import { postTransaction, issueStatement, integrity } from '../server/services.js';
-import { migrate, schemaVersion } from '../server/migrations.js';
+import { migrate, migrations, schemaVersion } from '../server/migrations.js';
 import { backupDatabase } from '../server/backup.js';
 import { restoreDatabase } from '../server/restore-bootstrap.js';
 
@@ -51,10 +51,11 @@ test('migrations are versioned, idempotent and guard ledger values at the databa
     assert.throws(() => db.prepare("INSERT INTO statements(accountId,month,revision,issuedAt,closing,snapshot,hash,pdf,pdfHash,archivePath) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, '2026-02', 1, 'now', 1.5, '{}', 'h', Buffer.from('p'), 'h', 'p'), /integer cents/);
 
     let ran = 0;
-    const failing = [{ version: 1, name: 'baseline', up() {} }, { version: 2, name: 'x', up() {} }, { version: 3, name: 'broken', up(d) { ran++; d.exec('CREATE TABLE partial(id INTEGER)'); throw new Error('boom'); } }];
-    assert.throws(() => migrate(db, failing), /migration 3 \(broken\) failed: boom/);
+    const next = schemaVersion + 1;
+    const failing = [...migrations, { version: next, name: 'broken', up(d) { ran++; d.exec('CREATE TABLE partial(id INTEGER)'); throw new Error('boom'); } }];
+    assert.throws(() => migrate(db, failing), new RegExp(`migration ${next} \\(broken\\) failed: boom`));
     assert.equal(ran, 1);
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, schemaVersion);
     assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name='partial'").get(), undefined);
   } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
