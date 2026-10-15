@@ -1,6 +1,6 @@
 import { statementDefaults } from '../src/site-copy.js';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, linkSync, unlinkSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { atomic, audit } from './db.js';
 import { renderStatement } from './pdf.js';
@@ -108,7 +108,8 @@ export async function issueStatement(db, id, month, actorId, directory) {
   const snapshot = { ...live, revision, issuedAt: new Date().toISOString() };
   const serialized = JSON.stringify(snapshot), pdf = await renderStatement(snapshot);
   mkdirSync(directory, { recursive: true });
-  const archivePath = join(directory, `${live.account.number}-${month}-r${revision}.pdf`);
+  // Account numbers can be reassigned, so the account id keeps archive names unique.
+  const archivePath = join(directory, `${id}-${live.account.number}-${month}-r${revision}.pdf`);
   const temporary = `${archivePath}.${randomBytes(12).toString('hex')}.tmp`;
   writeFileSync(temporary, pdf, { flag: 'wx', mode: 0o600 });
   let moved = false;
@@ -118,10 +119,16 @@ export async function issueStatement(db, id, month, actorId, directory) {
       const result = db.prepare('INSERT INTO statements(accountId,month,revision,issuedAt,closing,snapshot,hash,pdf,pdfHash,archivePath) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, month, revision, snapshot.issuedAt, snapshot.closing, serialized, digest(serialized), pdf, digest(pdf), archivePath);
       const statementId = Number(result.lastInsertRowid);
       audit(db, actorId, 'statement.issue', statementId, { accountId: id, month, revision });
-      renameSync(temporary, archivePath); moved = true;
+      // Never replace an existing archive file: it may belong to another issued statement.
+      if (existsSync(archivePath)) fail(409, 'A statement archive file with this name already exists.');
+      linkSync(temporary, archivePath); moved = true;
+      unlinkSync(temporary);
       return archive(db, id).find(row => row.id === statementId);
     });
-  } catch (error) { try { unlinkSync(moved ? archivePath : temporary); } catch {} throw error; }
+  } catch (error) {
+    for (const file of moved ? [archivePath, temporary] : [temporary]) { try { unlinkSync(file); } catch {} }
+    throw error;
+  }
 }
 export function saveInvestment(db, id, values, actorId) {
   const data = [text(values.sector, 'Sector', 100), text(values.status, 'Status', 100), cents(values.targetCapital, true), text(values.risk, 'Risk', 200), text(values.strategy, 'Strategy', 2000)];

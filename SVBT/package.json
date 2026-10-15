@@ -12,6 +12,7 @@
     "start": "node server/restore-bootstrap.js",
     "seed": "node server/seed.js",
     "create-moderator": "node server/create-moderator.js",
+    "backup": "node server/backup.js",
     "test": "node --test tests/*.test.js",
     "test:ui": "playwright test",
     "lint": "eslint src server tests vite.config.js"
