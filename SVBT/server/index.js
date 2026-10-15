@@ -20,6 +20,7 @@ import { openDatabase, seedDemo, hashPassword, verifyPassword, atomic, audit, ne
 
 import { ensureModerator } from './provision.js';
 import { previewImport, postImport, setDemo } from './imports.js';
+import { installPasswordReset, resendMailer } from './password-reset.js';
 
 import { digest, fail, text, accountData, postTransaction, reverseTransaction, preview, archive, statement, integrity, issueStatement, saveInvestment } from './services.js';
 
@@ -373,6 +374,8 @@ export async function createApp(options = {}) {
       res.json({ user: publicUser(user), csrfToken: makeSession(req, res, user.id) });
 
     });
+
+    installPasswordReset(app, db, { origin: config.origin, limiter, authenticate, accountGuard, email, password, sendMail: options.sendMail === undefined ? resendMailer() : options.sendMail, ownerOnly: (req, res, next) => req.user?.role === 'owner' ? next() : next(Object.assign(new Error('Owner permission is required.'), { status: req.user ? 403 : 401 })) });
 
     app.post('/api/logout', (req, res) => {
 

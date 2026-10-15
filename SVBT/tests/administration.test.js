@@ -101,3 +101,18 @@ test('design colors and statement annotations require editors, version updates a
   assert.throws(()=>f.db.prepare('UPDATE transactions SET date=? WHERE id=?').run('2026-01-01',t.id),/Immutable/);
  }finally{await f.close();}
 });
+
+test('the owner can make a one-time password reset link for a user', async()=>{
+ const f=await fixture({ownerEmail:'tpower@siliconvalleybankandtrust.com',sendMail:null});
+ try{
+  const owner=f.client(),anon=f.client();
+  await owner.login('tpower@siliconvalleybankandtrust.com','ModeratorGod!2026');
+  const userId=f.db.prepare("SELECT id FROM users WHERE email='sales@bakhtiariautogroup.com'").get().id;
+  const made=await owner.request(`/admin/users/${userId}/reset-link`,'POST',{});
+  assert.equal(made.status,201);
+  const token=/\?reset=([A-Za-z0-9_-]{43})$/.exec(made.data.link)[1];
+  await anon.request('/session');
+  assert.equal((await anon.request('/password-reset/complete','POST',{token,password:'Owner-issued-passphrase-2026'})).status,200);
+  await anon.login('sales@bakhtiariautogroup.com','Owner-issued-passphrase-2026');
+ }finally{await f.close();}
+});

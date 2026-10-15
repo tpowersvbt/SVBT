@@ -495,3 +495,46 @@ test('only the owner can flag demo accounts or import into them', async () => {
     assert.equal((await admin.request(`/admin/accounts/${accountId}/import`, 'POST', { csv: 'x' })).status, 403);
   } finally { await f.close(); }
 });
+
+test('password reset links work once, expire, sign the user out everywhere and never reveal whether an email exists', async () => {
+  const sent = [];
+  const f = await fixture({ sendMail: async message => { sent.push(message); } });
+  try {
+    const customer = f.client(), other = f.client(), anon = f.client();
+    await customer.login('sales@bakhtiariautogroup.com', 'FounderClient!2026');
+    await anon.request('/session');
+    const known = await anon.request('/password-reset/request', 'POST', { email: 'sales@bakhtiariautogroup.com' });
+    const unknown = await anon.request('/password-reset/request', 'POST', { email: 'nobody@example.com' });
+    assert.equal(known.status, 202);
+    assert.deepEqual(unknown.data, known.data);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].to, 'sales@bakhtiariautogroup.com');
+    const token = /\?reset=([A-Za-z0-9_-]{43})/.exec(sent[0].text)[1];
+    assert.equal((await anon.request('/password-reset/complete', 'POST', { token, password: 'short' })).status, 400);
+    const done = await anon.request('/password-reset/complete', 'POST', { token, password: 'A-brand-new-passphrase-2026' });
+    assert.equal(done.status, 200);
+    assert.equal((await customer.request('/account')).status, 401);
+    assert.equal((await anon.request('/password-reset/complete', 'POST', { token, password: 'Another-new-passphrase-2026' })).status, 400);
+    await other.login('sales@bakhtiariautogroup.com', 'A-brand-new-passphrase-2026');
+    await anon.request('/password-reset/request', 'POST', { email: 'sales@bakhtiariautogroup.com' });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const second = /\?reset=([A-Za-z0-9_-]{43})/.exec(sent[1].text)[1];
+    f.db.prepare('UPDATE password_resets SET expiresAt=?').run(Date.now() - 1);
+    assert.equal((await anon.request('/password-reset/complete', 'POST', { token: second, password: 'Yet-another-passphrase-2026' })).status, 400);
+    assert.ok(f.db.prepare("SELECT id FROM audit WHERE action='password-reset.complete'").get());
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM password_resets WHERE tokenHash=?').get(digest(token)).n, 0);
+  } finally { await f.close(); }
+});
+
+test('password reset says so plainly when email is not set up, and only the owner can make a reset link', async () => {
+  const f = await fixture({ sendMail: null });
+  try {
+    const anon = f.client(), admin = f.client();
+    await anon.request('/session');
+    assert.equal((await anon.request('/password-reset/request', 'POST', { email: 'sales@bakhtiariautogroup.com' })).status, 503);
+    await admin.login('tpower@siliconvalleybankandtrust.com', 'ModeratorGod!2026');
+    const userId = f.db.prepare("SELECT id FROM users WHERE email='sales@bakhtiariautogroup.com'").get().id;
+    assert.equal((await admin.request(`/admin/users/${userId}/reset-link`, 'POST', {})).status, 403);
+  } finally { await f.close(); }
+});

@@ -83,6 +83,7 @@ export function installAdministration(app, db, authenticate) {
     const {overrides,version}=req.body;
     if(!overrides||Array.isArray(overrides)||typeof overrides!=='object'||Object.keys(overrides).length>300)fail(400,'Invalid content.');
     for(const [key,value] of Object.entries(overrides))if(!/^[a-zA-Z0-9_.-]{1,100}$/.test(key)||typeof value!=='string'||value.length>6000)fail(400,'Invalid content field.');
+    if(Object.hasOwn(overrides,'depositDisclosure')&&!overrides.depositDisclosure.trim())fail(400,'The deposit disclosure can be reworded but not left blank.');
     for(const [key,value] of Object.entries(overrides)) if(key.startsWith('theme.') && (!(key in themeDefaults)||!/^#[0-9a-f]{6}$/i.test(value))) fail(400,'Choose a valid six-digit color.');
     atomic(db,()=>{
       if(siteContent(db).version!==version)fail(409,'Content changed. Reload before saving.');
