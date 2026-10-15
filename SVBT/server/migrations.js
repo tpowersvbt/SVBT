@@ -63,6 +63,14 @@ export const migrations = [
         CREATE TRIGGER immutable_transfers_update BEFORE UPDATE ON transfers BEGIN SELECT RAISE(ABORT,'Immutable transfers'); END;
         CREATE TRIGGER immutable_transfers_delete BEFORE DELETE ON transfers BEGIN SELECT RAISE(ABORT,'Immutable transfers'); END;`);
     }
+  },
+  {
+    version: 6,
+    name: 'password-resets',
+    up(db) {
+      db.exec(`CREATE TABLE password_resets(tokenHash TEXT PRIMARY KEY, userId INTEGER NOT NULL REFERENCES users(id), expiresAt INTEGER NOT NULL);
+        CREATE INDEX password_resets_user ON password_resets(userId);`);
+    }
   }
 ];
 

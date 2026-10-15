@@ -56,3 +56,4 @@ input,textarea,select{background:var(--input-background,#091522);color:var(--inp
 .sector-copy .link-arrow,.text-button,.link-arrow{color:var(--link-text,#d2dde3)}
 .sector-copy .link-arrow:hover,.text-button:hover,.link-arrow:hover{color:var(--copper)}
 @media print{input,textarea,select{color:#111;background:#fff}}
+.legal-text{white-space:pre-wrap}
