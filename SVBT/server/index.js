@@ -12,7 +12,7 @@ import { resolve, dirname } from 'node:path';
 
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { openDatabase, seedDemo, hashPassword, verifyPassword, atomic, audit, newAccount } from './db.js';
+import { openDatabase, seedDemo, hashPassword, verifyPassword, atomic, audit, newAccount, publicPasswords } from './db.js';
 
 import { ensureModerator } from './provision.js';
 
@@ -267,6 +267,8 @@ export async function createApp(options = {}) {
 
       const secret = password(values.password, true);
 
+      if (publicPasswords.has(secret)) fail(400, 'Choose a password that has not been published.');
+
       const passwordHash = await authenticate(() => hashPassword(secret), res);
 
       const id = atomic(db, () => {
@@ -296,6 +298,14 @@ export async function createApp(options = {}) {
       const verified = await authenticate(() => verifyPassword(secret, user?.passwordHash || dummyHash), res);
 
       if (!user || !verified) fail(401, 'Email or password is incorrect.');
+
+      if (config.production && publicPasswords.has(secret)) {
+
+        console.warn(`Refused sign-in for user ${user.id}: the account uses a published password and must be reset.`);
+
+        fail(401, 'Email or password is incorrect.');
+
+      }
 
       audit(db, user.id, 'session.login', user.id);
 
