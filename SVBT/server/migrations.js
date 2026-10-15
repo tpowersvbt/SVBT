@@ -30,6 +30,18 @@ export const migrations = [
       if (!db.prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name='absoluteExpiresAt'").get()) db.exec('ALTER TABLE sessions ADD COLUMN absoluteExpiresAt INTEGER');
       db.exec('CREATE TABLE IF NOT EXISTS ledger_requests(requestId TEXT PRIMARY KEY, actorId INTEGER NOT NULL REFERENCES users(id), accountId INTEGER NOT NULL REFERENCES accounts(id), requestHash TEXT NOT NULL, transactionId INTEGER NOT NULL REFERENCES transactions(id))');
     }
+  },
+  {
+    version: 4,
+    name: 'demo-accounts-and-imports',
+    up(db) {
+      // Demo accounts hold demonstration figures; their statement PDFs are always stamped as samples.
+      db.exec(`ALTER TABLE accounts ADD COLUMN demo INTEGER NOT NULL DEFAULT 0 CHECK(demo IN (0,1));
+        CREATE TABLE imports(id INTEGER PRIMARY KEY, accountId INTEGER NOT NULL REFERENCES accounts(id), actorId INTEGER NOT NULL REFERENCES users(id), fileHash TEXT NOT NULL, rowCount INTEGER NOT NULL, firstTransactionId INTEGER NOT NULL REFERENCES transactions(id), lastTransactionId INTEGER NOT NULL REFERENCES transactions(id), closing INTEGER NOT NULL, createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), UNIQUE(accountId,fileHash));
+        CREATE TRIGGER immutable_imports_update BEFORE UPDATE ON imports BEGIN SELECT RAISE(ABORT,'Immutable imports'); END;
+        CREATE TRIGGER immutable_imports_delete BEFORE DELETE ON imports BEGIN SELECT RAISE(ABORT,'Immutable imports'); END;
+        CREATE TRIGGER demo_stays_on_after_import BEFORE UPDATE OF demo ON accounts WHEN NEW.demo=0 AND EXISTS(SELECT 1 FROM imports WHERE accountId=NEW.id) BEGIN SELECT RAISE(ABORT,'Account holds imported demonstration data'); END;`);
+    }
   }
 ];
 
