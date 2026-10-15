@@ -1,5 +1,5 @@
 import { themeDefaults } from '../src/site-copy.js';
-import { atomic, audit, hashPassword, newAccount } from './db.js';
+import { atomic, audit, hashPassword, newAccount, publicPasswords } from './db.js';
 import { fail, text, updateTransactionDetails, statementNotes, saveStatementNotes } from './services.js';
 
 export function initializeAdministration(db) {
@@ -35,6 +35,7 @@ export function installAdministration(app, db, authenticate) {
     if (!['customer','moderator','admin','owner'].includes(v.role)) fail(400,'Invalid role.');
     const name=text(v.name,'Name',200), address=text(v.address,'Address',500);
     if (typeof v.password !== 'string' || v.password.length < 12 || v.password.length > 1024) fail(400,'Use a password of 12–1024 characters.');
+    if (publicPasswords.has(v.password)) fail(400,'Choose a password that has not been published.');
     if (db.prepare('SELECT id FROM users WHERE email=?').get(email)) fail(409,'This email is already registered.');
     const hash=await authenticate(() => hashPassword(v.password),res);
     const id=atomic(db,()=>{

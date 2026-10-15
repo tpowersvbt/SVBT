@@ -1,4 +1,4 @@
-import { hashPassword, atomic, audit, demoCredentials } from './db.js';
+import { hashPassword, atomic, audit, publicPasswords } from './db.js';
 
 export async function ensureModerator(db) {
   const email = process.env.MODERATOR_EMAIL?.trim().toLowerCase();
@@ -10,7 +10,7 @@ export async function ensureModerator(db) {
     return existing.id;
   }
   const password = process.env.MODERATOR_PASSWORD;
-  if (typeof password !== 'string' || password.length < 12 || password.length > 1024 || password === 'svbt2026!' || Object.values(demoCredentials).some(([, value]) => value === password)) {
+  if (typeof password !== 'string' || password.length < 12 || password.length > 1024 || publicPasswords.has(password)) {
     throw new Error('Set MODERATOR_PASSWORD to a unique password of 12-1024 characters.');
   }
   const hash = await hashPassword(password);

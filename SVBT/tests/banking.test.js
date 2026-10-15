@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { execFileSync } from 'node:child_process';
 import { createApp } from '../server/index.js';
-import { openDatabase, verifyPassword } from '../server/db.js';
+import { openDatabase, verifyPassword, hashPassword } from '../server/db.js';
 import { digest } from '../server/services.js';
 
 const origin = 'http://localhost:3000';
@@ -314,6 +314,23 @@ test('production fails closed and unseeded databases have no default users', asy
   const seeded = await fixture();
   try { await assert.rejects(createApp({ dbPath: seeded.app.locals.config.dbPath, production: true, demoSeed: false, origin: 'https://bank.example', frontend: false }), /demo-seeded database/); }
   finally { await seeded.close(); }
+});
+
+test('production refuses sign-in and new accounts that use a published password', async () => {
+  const f = await fixture({ production: true, demoSeed: false, origin: 'https://bank.example' });
+  try {
+    const insert = f.db.prepare("INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,'moderator',?)");
+    insert.run('leaked@example.com', 'Leaked', 'A', await hashPassword('svbt2026!'));
+    insert.run('unique@example.com', 'Unique', 'A', await hashPassword('UniqueOperations!2026'));
+    const write = { Origin: 'https://bank.example' };
+    const signIn = async (email, password) => { const c = f.client(); await c.request('/session'); return c.request('/login', 'POST', { email, password }, write); };
+    const leaked = await signIn('leaked@example.com', 'svbt2026!');
+    assert.equal(leaked.status, 401);
+    assert.equal(leaked.data.error, 'Email or password is incorrect.');
+    assert.equal((await signIn('unique@example.com', 'UniqueOperations!2026')).status, 200);
+    const c = f.client(); await c.request('/session');
+    assert.equal((await c.request('/register', 'POST', { name: 'Founder', address: 'A', email: 'new@example.com', password: 'ModeratorGod!2026' }, write)).status, 400);
+  } finally { await f.close(); }
 });
 
 test('persistent demo startup is idempotent and concurrent statement issuance is serialized', async () => {
