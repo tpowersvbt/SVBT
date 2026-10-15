@@ -383,3 +383,103 @@ test('server-only moderator provisioning requires unique non-demo credentials', 
     afterReset.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('failed passwords lock the account across IP addresses without revealing whether it exists', async () => {
+  const f = await fixture({ accountFailureLimit: 3, trustProxy: true });
+  try {
+    const email = 'sales@bakhtiariautogroup.com';
+    for (const [i, target] of [email, 'nobody@example.com'].entries()) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const c = f.client();
+        await c.request('/session', 'GET', undefined, { 'X-Forwarded-For': `198.51.100.${i * 10 + attempt}` });
+        assert.equal((await c.request('/login', 'POST', { email: target, password: 'wrong-password' }, { 'X-Forwarded-For': `198.51.100.${i * 10 + attempt}` })).status, 401);
+      }
+      const c = f.client();
+      await c.request('/session', 'GET', undefined, { 'X-Forwarded-For': '203.0.113.9' });
+      const locked = await c.request('/login', 'POST', { email: target.toUpperCase(), password: target === email ? 'FounderClient!2026' : 'x' }, { 'X-Forwarded-For': '203.0.113.9' });
+      assert.equal(locked.status, 429);
+      assert.ok(Number(locked.headers.get('retry-after')) > 0);
+    }
+    assert.ok(f.db.prepare("SELECT id FROM audit WHERE action='session.locked'").get());
+    const other = f.client();
+    await other.login('tpower@siliconvalleybankandtrust.com', 'ModeratorGod!2026');
+  } finally { await f.close(); }
+  const reset = await fixture({ accountFailureLimit: 2 });
+  try {
+    const c = reset.client();
+    await c.request('/session');
+    assert.equal((await c.request('/login', 'POST', { email: 'sales@bakhtiariautogroup.com', password: 'wrong-password' })).status, 401);
+    await c.login('sales@bakhtiariautogroup.com', 'FounderClient!2026');
+    assert.equal((await c.request('/profile', 'PATCH', { name: 'A', address: 'B', password: 'wrong-password' })).status, 401);
+    assert.equal((await c.request('/profile', 'PATCH', { name: 'A', address: 'B', password: 'wrong-password' })).status, 401);
+    assert.equal((await c.request('/profile', 'PATCH', { name: 'A', address: 'B', password: 'FounderClient!2026' })).status, 429);
+  } finally { await reset.close(); }
+});
+
+test('new anonymous sessions are throttled and IPv6 clients are limited per /64', async () => {
+  const { clientKey } = await import('../server/index.js');
+  assert.equal(clientKey('2001:db8:1:2:aaaa::1'), clientKey('2001:db8:1:2:bbbb:cccc:dddd:eeee'));
+  assert.notEqual(clientKey('2001:db8:1:2::1'), clientKey('2001:db8:1:3::1'));
+  assert.equal(clientKey('::ffff:192.0.2.1'), '192.0.2.1');
+  assert.equal(clientKey('192.0.2.1'), '192.0.2.1');
+  const f = await fixture({ sessionRateLimit: 2 });
+  try {
+    for (let i = 0; i < 2; i++) assert.equal((await f.client().request('/session')).status, 200);
+    const denied = await f.client().request('/session');
+    assert.equal(denied.status, 429);
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM sessions').get().n, 2);
+    const anonymous = f.db.prepare('SELECT * FROM sessions').get();
+    assert.ok(anonymous.expiresAt - Date.now() <= 2 * 60 * 60 * 1000);
+  } finally { await f.close(); }
+});
+
+test('signed-in sessions expire when idle, slide on activity and never pass eight hours', async () => {
+  const f = await fixture({ sessionIdleMs: 5 * 60 * 1000 });
+  try {
+    const c = f.client();
+    await c.login('sales@bakhtiariautogroup.com', 'FounderClient!2026');
+    const hash = digest(c.cookie.split('=')[1]);
+    let row = f.db.prepare('SELECT * FROM sessions WHERE tokenHash=?').get(hash);
+    assert.ok(row.expiresAt - Date.now() <= 5 * 60 * 1000);
+    assert.ok(row.absoluteExpiresAt - Date.now() > 7 * 60 * 60 * 1000);
+    f.db.prepare('UPDATE sessions SET expiresAt=? WHERE tokenHash=?').run(Date.now() + 60 * 1000, hash);
+    assert.equal((await c.request('/account')).status, 200);
+    row = f.db.prepare('SELECT * FROM sessions WHERE tokenHash=?').get(hash);
+    assert.ok(row.expiresAt - Date.now() > 4 * 60 * 1000);
+    f.db.prepare('UPDATE sessions SET expiresAt=?, absoluteExpiresAt=? WHERE tokenHash=?').run(Date.now() + 30 * 1000, Date.now() + 30 * 1000, hash);
+    assert.equal((await c.request('/account')).status, 200);
+    assert.ok(f.db.prepare('SELECT expiresAt FROM sessions WHERE tokenHash=?').get(hash).expiresAt <= Date.now() + 30 * 1000);
+    f.db.prepare('UPDATE sessions SET expiresAt=? WHERE tokenHash=?').run(Date.now() - 1, hash);
+    assert.equal((await c.request('/account')).status, 401);
+  } finally { await f.close(); }
+});
+
+test('a repeated ledger post with the same request ID records one entry', async () => {
+  const f = await fixture();
+  try {
+    const admin = f.client();
+    await admin.login('tpower@siliconvalleybankandtrust.com', 'ModeratorGod!2026');
+    const accountId = f.db.prepare('SELECT id FROM accounts ORDER BY id LIMIT 1').get().id;
+    const before = f.db.prepare('SELECT COUNT(*) n FROM transactions').get().n;
+    const entry = { date: '2026-10-01', description: 'Wire in', amount: 12345, requestId: 'a1b2c3d4-e5f6-4711-8000-000000000001' };
+    const responses = await Promise.all([1, 2, 3].map(() => admin.request(`/admin/accounts/${accountId}/transactions`, 'POST', entry)));
+    for (const response of responses) assert.equal(response.status, 201);
+    assert.equal(new Set(responses.map(response => response.data.id)).size, 1);
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM transactions').get().n, before + 1);
+    assert.equal((await admin.request(`/admin/accounts/${accountId}/transactions`, 'POST', { ...entry, amount: 999 })).status, 409);
+    assert.equal((await admin.request(`/admin/accounts/${accountId}/transactions`, 'POST', { ...entry, requestId: 'short' })).status, 400);
+    const plain = { date: '2026-10-01', description: 'No request ID', amount: 100 };
+    assert.equal((await admin.request(`/admin/accounts/${accountId}/transactions`, 'POST', plain)).status, 201);
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM transactions').get().n, before + 2);
+  } finally { await f.close(); }
+});
+
+test('SQLite runs in WAL mode with a busy timeout, so a second writer waits instead of failing at once', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'svbt-sqlite-'));
+  try {
+    const first = openDatabase(join(directory, 'bank.sqlite')), second = openDatabase(join(directory, 'bank.sqlite'));
+    assert.equal(first.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
+    assert.equal(second.prepare('PRAGMA busy_timeout').get().timeout, 5000);
+    first.close(); second.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
