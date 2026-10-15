@@ -33,5 +33,5 @@ export const themeVariables = {
 
 export const statementDefaults = {'statement.bankName':'Silicon Valley Bank and Trust','statement.heading':'BUSINESS CHECKING STATEMENT','statement.notice':'ACCOUNT RECORD - No real funds','statement.notesHeading':'STATEMENT NOTES'};
 Object.assign(copyDefaults, statementDefaults);
-for (const tab of ['Overview','Transactions','Statements','Projects','Leadership bio','Investments','Design & wording','Customer details','Users & permissions','Audit','Profile','Account details']) copyDefaults['tab.'+tab.replaceAll(' ','_').replace('&','and')] = tab;
+for (const tab of ['Overview','Transactions','Statements','Projects','Leadership bio','Investments','Design & wording','Customer details','Users & permissions','Audit','Profile','Account details','Transfers']) copyDefaults['tab.'+tab.replaceAll(' ','_').replace('&','and')] = tab;
 Object.assign(copyDefaults,{workspaceTitle:'Your financial perspective.',operationsLabel:'OPERATIONS CONSOLE',businessLabel:'BUSINESS WORKSPACE'});
