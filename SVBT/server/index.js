@@ -2,6 +2,7 @@ import { initializeAdministration, provisionHandoverOwner, effectiveUser, instal
 import 'dotenv/config';
 import { initializeLeadership, leadership, updateLeadership } from './leadership.js';
 import { initializeProjects, saveProject, publishProject, publicProjects } from './projects.js';
+import { migrate } from './migrations.js';
 import { renderStatement } from './pdf.js';
 
 import express from 'express';
@@ -103,6 +104,7 @@ export async function createApp(options = {}) {
   initializeAdministration(db);
   initializeProjects(db);
   initializeLeadership(db);
+  migrate(db);
 
   let vite;
 
