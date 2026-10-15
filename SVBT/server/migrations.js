@@ -42,6 +42,27 @@ export const migrations = [
         CREATE TRIGGER immutable_imports_delete BEFORE DELETE ON imports BEGIN SELECT RAISE(ABORT,'Immutable imports'); END;
         CREATE TRIGGER demo_stays_on_after_import BEFORE UPDATE OF demo ON accounts WHEN NEW.demo=0 AND EXISTS(SELECT 1 FROM imports WHERE accountId=NEW.id) BEGIN SELECT RAISE(ABORT,'Account holds imported demonstration data'); END;`);
     }
+  },
+  {
+    version: 5,
+    name: 'customer-transfers',
+    up(db) {
+      // PIN failures and locks live in the database so they survive a restart.
+      db.exec(`CREATE TABLE transfer_pins(userId INTEGER PRIMARY KEY REFERENCES users(id), pinHash TEXT NOT NULL, failedCount INTEGER NOT NULL DEFAULT 0, lockedUntil INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE transfers(id INTEGER PRIMARY KEY, fromAccountId INTEGER NOT NULL REFERENCES accounts(id), toAccountId INTEGER NOT NULL REFERENCES accounts(id),
+          amount INTEGER NOT NULL CHECK(typeof(amount)='integer' AND amount>0 AND amount<=100000000000), description TEXT NOT NULL, date TEXT NOT NULL,
+          debitId INTEGER NOT NULL UNIQUE REFERENCES transactions(id), creditId INTEGER NOT NULL UNIQUE REFERENCES transactions(id),
+          requestId TEXT NOT NULL UNIQUE, requestHash TEXT NOT NULL, actorId INTEGER NOT NULL REFERENCES users(id),
+          createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), CHECK(fromAccountId!=toAccountId));
+        CREATE INDEX transfers_from_date ON transfers(fromAccountId,date);
+        CREATE INDEX transfers_to ON transfers(toAccountId);
+        CREATE TRIGGER valid_transfer BEFORE INSERT ON transfers WHEN
+          NOT EXISTS(SELECT 1 FROM transactions WHERE id=NEW.debitId AND accountId=NEW.fromAccountId AND amount=-NEW.amount AND date=NEW.date)
+          OR NOT EXISTS(SELECT 1 FROM transactions WHERE id=NEW.creditId AND accountId=NEW.toAccountId AND amount=NEW.amount AND date=NEW.date)
+          BEGIN SELECT RAISE(ABORT,'Transfer entries do not match'); END;
+        CREATE TRIGGER immutable_transfers_update BEFORE UPDATE ON transfers BEGIN SELECT RAISE(ABORT,'Immutable transfers'); END;
+        CREATE TRIGGER immutable_transfers_delete BEFORE DELETE ON transfers BEGIN SELECT RAISE(ABORT,'Immutable transfers'); END;`);
+    }
   }
 ];
 

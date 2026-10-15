@@ -4,6 +4,7 @@ import { initializeLeadership, leadership, updateLeadership } from './leadership
 import { initializeProjects, saveProject, publishProject, publicProjects } from './projects.js';
 import { migrate } from './migrations.js';
 import { renderStatement } from './pdf.js';
+import { pin, trivialPin, checkPin, savePin, ownAccount, transferRequest, postTransfer, transferSummary } from './transfers.js';
 
 import express from 'express';
 
@@ -78,7 +79,10 @@ export function configuration(options = {}) {
   const sessionIdleMs = options.sessionIdleMs ?? Number(process.env.SESSION_IDLE_MINUTES || 30) * 60 * 1000;
   if (!Number.isSafeInteger(sessionIdleMs) || sessionIdleMs < 60 * 1000 || sessionIdleMs > 8 * 60 * 60 * 1000) throw new Error('SESSION_IDLE_MINUTES must be a whole number from 1 to 480.');
 
-  return { production, origin, origins, demoSeed, sampleData, authRateLimit, accountFailureLimit, sessionRateLimit, sessionIdleMs, frontend: options.frontend ?? true, dbPath: options.dbPath ?? resolve(process.env.DB_PATH || resolve(root, 'data/bank.sqlite')), statementDir: resolve(options.statementDir ?? process.env.STATEMENT_DIR ?? resolve(root, 'monthly/statements')), trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true', dev: options.dev ?? false };
+  const transferDailyLimit = options.transferDailyLimit ?? Number(process.env.TRANSFER_DAILY_LIMIT_CENTS || 1000000);
+  if (!Number.isSafeInteger(transferDailyLimit) || transferDailyLimit < 1 || transferDailyLimit > 100000000000) throw new Error('TRANSFER_DAILY_LIMIT_CENTS must be a positive whole number of cents.');
+
+  return { production, origin, origins, demoSeed, transferDailyLimit, sampleData, authRateLimit, accountFailureLimit, sessionRateLimit, sessionIdleMs, frontend: options.frontend ?? true, dbPath: options.dbPath ?? resolve(process.env.DB_PATH || resolve(root, 'data/bank.sqlite')), statementDir: resolve(options.statementDir ?? process.env.STATEMENT_DIR ?? resolve(root, 'monthly/statements')), trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true', dev: options.dev ?? false };
 
 }
 
@@ -418,6 +422,26 @@ export async function createApp(options = {}) {
 
     });
 
+    // Customer transfers. Setting the PIN needs the account password; sending needs the PIN.
+    app.get('/api/transfers', auth, (req, res) => res.json(transferSummary(db, req.user.id, config.transferDailyLimit)));
+    app.put('/api/transfer-pin', auth, limiter, async (req, res) => {
+      ownAccount(db, req.user.id);
+      const secret = password(req.body.password), value = pin(req.body.pin);
+      if (trivialPin(value)) fail(400, 'Choose a PIN that is not a repeated digit or a straight sequence.');
+      const guardKey = req.user.email.toLowerCase();
+      accountGuard.check(guardKey, res);
+      if (!await authenticate(() => verifyPassword(secret, req.user.passwordHash), res)) { accountGuard.failed(guardKey, req.user.id); fail(403, 'Current password verification failed.'); }
+      accountGuard.clear(guardKey);
+      savePin(db, req.user.id, await authenticate(() => hashPassword(value), res));
+      res.json(transferSummary(db, req.user.id, config.transferDailyLimit));
+    });
+    app.post('/api/transfers', auth, async (req, res) => {
+      ownAccount(db, req.user.id);
+      const request = transferRequest(req.body), value = pin(req.body.pin);
+      // The PIN is checked before the recipient is looked up, so account numbers cannot be probed without it.
+      await checkPin(db, req.user.id, value, (candidate, hash) => authenticate(() => verifyPassword(candidate, hash), res), res);
+      res.status(201).json(postTransfer(db, req.user.id, request, config.transferDailyLimit));
+    });
     app.get('/api/leadership', (req, res) => res.json(leadership(db).published));
     app.get('/api/projects', (req, res) => res.json(publicProjects(db)));
     app.use('/api/admin', moderator);
