@@ -107,7 +107,7 @@ export default function App() {
 
     if (!response.ok) {
 
-      if (response.status === 401 && path !== '/login' && path !== '/profile') { setSession({ user: null }); setWorkspace(false); }
+      if (response.status === 401 && path !== '/login' && path !== '/profile') { setWorkspace(false); fetch('/api/session', { credentials: 'same-origin' }).then(r => r.json()).then(next => { if (next.csrfToken) token.current = next.csrfToken; setSession(next); }).catch(() => setSession({ user: null })); }
 
       throw new Error(data.error || `Request failed (${response.status})`);
 

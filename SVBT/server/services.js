@@ -54,8 +54,18 @@ export function accountData(db, id) {
 export function postTransaction(db, id, values, actorId) {
   account(db, id);
   const entry = { date: date(values.date), description: text(values.description, 'Description', 300), amount: cents(values.amount) };
+  const requestId = values.requestId;
+  if (requestId !== undefined && (typeof requestId !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(requestId))) fail(400, 'Request ID must be 16-100 letters, digits, hyphens or underscores.');
+  const requestHash = digest(JSON.stringify(entry));
   return atomic(db, () => {
+    // A retried or double-submitted post returns the entry it already created instead of posting twice.
+    const previous = requestId && db.prepare('SELECT * FROM ledger_requests WHERE requestId=?').get(requestId);
+    if (previous) {
+      if (previous.actorId !== actorId || previous.accountId !== id || previous.requestHash !== requestHash) fail(409, 'This request ID was already used for a different ledger entry.');
+      return db.prepare('SELECT * FROM transactions WHERE id=?').get(previous.transactionId);
+    }
     const transactionId = Number(db.prepare('INSERT INTO transactions(accountId,date,description,amount,actorId) VALUES (?,?,?,?,?)').run(id, entry.date, entry.description, entry.amount, actorId).lastInsertRowid);
+    if (requestId) db.prepare('INSERT INTO ledger_requests(requestId,actorId,accountId,requestHash,transactionId) VALUES (?,?,?,?,?)').run(requestId, actorId, id, requestHash, transactionId);
     accountData(db, id);
     audit(db, actorId, 'transaction.post', transactionId, { accountId: id, ...entry });
     return db.prepare('SELECT * FROM transactions WHERE id=?').get(transactionId);

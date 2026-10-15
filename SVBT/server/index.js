@@ -8,6 +8,8 @@ import express from 'express';
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
+import { isIPv4, isIPv6 } from 'node:net';
+
 import { resolve, dirname } from 'node:path';
 
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -69,7 +71,12 @@ export function configuration(options = {}) {
 
   if (!Number.isSafeInteger(authRateLimit) || authRateLimit < 1) throw new Error('authRateLimit must be a positive integer.');
 
-  return { production, origin, origins, demoSeed, sampleData, authRateLimit, frontend: options.frontend ?? true, dbPath: options.dbPath ?? resolve(process.env.DB_PATH || resolve(root, 'data/bank.sqlite')), statementDir: resolve(options.statementDir ?? process.env.STATEMENT_DIR ?? resolve(root, 'monthly/statements')), trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true', dev: options.dev ?? false };
+  const accountFailureLimit = options.accountFailureLimit ?? 10, sessionRateLimit = options.sessionRateLimit ?? 120;
+  if (![accountFailureLimit, sessionRateLimit].every(value => Number.isSafeInteger(value) && value >= 1)) throw new Error('accountFailureLimit and sessionRateLimit must be positive integers.');
+  const sessionIdleMs = options.sessionIdleMs ?? Number(process.env.SESSION_IDLE_MINUTES || 30) * 60 * 1000;
+  if (!Number.isSafeInteger(sessionIdleMs) || sessionIdleMs < 60 * 1000 || sessionIdleMs > 8 * 60 * 60 * 1000) throw new Error('SESSION_IDLE_MINUTES must be a whole number from 1 to 480.');
+
+  return { production, origin, origins, demoSeed, sampleData, authRateLimit, accountFailureLimit, sessionRateLimit, sessionIdleMs, frontend: options.frontend ?? true, dbPath: options.dbPath ?? resolve(process.env.DB_PATH || resolve(root, 'data/bank.sqlite')), statementDir: resolve(options.statementDir ?? process.env.STATEMENT_DIR ?? resolve(root, 'monthly/statements')), trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true', dev: options.dev ?? false };
 
 }
 
@@ -91,6 +98,16 @@ function password(value, registration = false) {
 
   return value;
 
+}
+
+// Rate-limit key: IPv4 address, or the /64 network for IPv6, since one client usually controls a whole /64.
+export function clientKey(ip = '') {
+  if (ip.startsWith('::ffff:') && isIPv4(ip.slice(7))) return ip.slice(7);
+  if (!isIPv6(ip)) return ip;
+  const [head, tail = ''] = ip.split('%')[0].split('::');
+  const first = head ? head.split(':') : [], last = tail ? tail.split(':') : [];
+  const groups = ip.includes('::') ? [...first, ...Array(Math.max(0, 8 - first.length - last.length)).fill('0'), ...last] : first;
+  return `${groups.slice(0, 4).map(group => parseInt(group, 16).toString(16)).join(':')}::/64`;
 }
 
 function identifier(value) { if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) fail(400, 'Invalid record identifier.'); return Number(value); }
@@ -185,21 +202,27 @@ export async function createApp(options = {}) {
 
     const cookieName = 'svbt_session';
 
+    const sessionLifetimeMs = 8 * 60 * 60 * 1000, anonymousLifetimeMs = 2 * 60 * 60 * 1000;
+
     function makeSession(req, res, userId) {
 
       const token = randomBytes(32).toString('base64url'), csrfToken = randomBytes(32).toString('base64url');
+
+      // Signed-in sessions expire after sessionIdleMs without activity and never outlive 8 hours.
+      // Anonymous sessions only carry the sign-in CSRF token, so they are kept short.
+      const now = Date.now(), absoluteExpiresAt = now + (userId ? sessionLifetimeMs : anonymousLifetimeMs);
 
       atomic(db, () => {
 
         if (req.session) db.prepare('DELETE FROM sessions WHERE tokenHash=?').run(req.session.tokenHash);
 
-        db.prepare('DELETE FROM sessions WHERE expiresAt<=?').run(Date.now());
+        db.prepare('DELETE FROM sessions WHERE expiresAt<=?').run(now);
 
-        db.prepare('INSERT INTO sessions(tokenHash,userId,csrfToken,expiresAt) VALUES (?,?,?,?)').run(digest(token), userId ?? null, csrfToken, Date.now() + 8 * 60 * 60 * 1000);
+        db.prepare('INSERT INTO sessions(tokenHash,userId,csrfToken,expiresAt,absoluteExpiresAt) VALUES (?,?,?,?,?)').run(digest(token), userId ?? null, csrfToken, userId ? Math.min(now + config.sessionIdleMs, absoluteExpiresAt) : absoluteExpiresAt, absoluteExpiresAt);
 
       });
 
-      res.cookie(cookieName, token, { httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: 8 * 60 * 60 * 1000 });
+      res.cookie(cookieName, token, { httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: absoluteExpiresAt - now });
 
       req.session = { tokenHash: digest(token), userId, csrfToken };
 
@@ -214,6 +237,12 @@ export async function createApp(options = {}) {
       const token = tokens.length === 1 ? tokens[0].slice(cookieName.length + 1) : '';
 
       if (/^[A-Za-z0-9_-]{43}$/.test(token)) req.session = db.prepare('SELECT * FROM sessions WHERE tokenHash=? AND expiresAt>?').get(digest(token), Date.now());
+
+      // Slide the idle deadline on activity, at most once a minute, capped by the absolute expiry.
+      if (req.session?.userId && req.session.absoluteExpiresAt) {
+        const now = Date.now(), next = Math.min(now + config.sessionIdleMs, req.session.absoluteExpiresAt);
+        if (next - req.session.expiresAt >= 60 * 1000) db.prepare('UPDATE sessions SET expiresAt=? WHERE tokenHash=?').run(next, req.session.tokenHash);
+      }
 
       req.user = effectiveUser(db, req.session?.userId ? db.prepare('SELECT * FROM users WHERE id=?').get(req.session.userId) : null);
 
@@ -237,24 +266,45 @@ export async function createApp(options = {}) {
 
     const moderator = (req, res, next) => !req.user ? next(Object.assign(new Error('Sign in to access operations.'), { status: 401 })) : ['moderator','admin','owner'].includes(req.user.role) ? next() : next(Object.assign(new Error('Moderator permission is required.'), { status: 403 }));
 
-    app.get('/api/session', (req, res) => res.json({ user: publicUser(req.user), csrfToken: req.session?.csrfToken || makeSession(req, res, null) }));
+    function rateLimit(limit, message) {
+      const attempts = new Map();
+      return (req, res, next) => {
+        const key = clientKey(req.ip), now = Date.now();
+        for (const [ip, value] of attempts) if (value.until <= now) attempts.delete(ip);
+        const current = attempts.get(key) || { count: 0, until: now + 15 * 60 * 1000 };
+        if ((!attempts.has(key) && attempts.size >= 10000) || current.count >= limit) { res.set('Retry-After', String(Math.max(1, Math.ceil((current.until - now) / 1000)))); return next(Object.assign(new Error(message), { status: 429 })); }
+        current.count++;
+        attempts.set(key, current); next();
+      };
+    }
 
-    const attempts = new Map();
+    const limiter = rateLimit(config.authRateLimit, 'Too many authentication attempts. Try again later.');
 
-    const limiter = (req, res, next) => {
+    const sessionLimiter = rateLimit(config.sessionRateLimit, 'Too many new sessions. Try again later.');
 
-      const key = req.ip, now = Date.now();
+    app.get('/api/session', (req, res, next) => req.session ? next() : sessionLimiter(req, res, next), (req, res) => res.json({ user: publicUser(req.user), csrfToken: req.session?.csrfToken || makeSession(req, res, null) }));
 
-      for (const [ip, value] of attempts) if (value.until <= now) attempts.delete(ip);
-
-      const current = attempts.get(key) || { count: 0, until: now + 15 * 60 * 1000 };
-
-      if ((!attempts.has(key) && attempts.size >= 10000) || current.count >= config.authRateLimit) { res.set('Retry-After', String(Math.max(1, Math.ceil((current.until - now) / 1000)))); return next(Object.assign(new Error('Too many authentication attempts. Try again later.'), { status: 429 })); }
-
-      current.count++;
-
-      attempts.set(key, current); next();
-
+    // Per-account failed password limit, independent of IP, so guesses spread across many addresses still stop.
+    // Unknown emails are tracked the same way so the response never reveals whether an account exists.
+    const failures = new Map(), failureWindowMs = 15 * 60 * 1000;
+    const accountGuard = {
+      check(key, res) {
+        const current = failures.get(key), now = Date.now();
+        if (current && current.until <= now) failures.delete(key);
+        else if (current && current.count >= config.accountFailureLimit) {
+          res.set('Retry-After', String(Math.max(1, Math.ceil((current.until - now) / 1000))));
+          fail(429, 'Too many failed sign-in attempts for this account. Try again later.');
+        }
+      },
+      failed(key, userId) {
+        const now = Date.now();
+        if (!failures.has(key) && failures.size >= 50000) failures.delete(failures.keys().next().value);
+        const current = failures.get(key) || { count: 0, until: now + failureWindowMs };
+        current.count++;
+        failures.set(key, current);
+        if (current.count === config.accountFailureLimit && userId) audit(db, null, 'session.locked', userId, { failures: current.count });
+      },
+      clear(key) { failures.delete(key); }
     };
 
     app.post('/api/register', limiter, async (req, res) => {
@@ -291,11 +341,15 @@ export async function createApp(options = {}) {
 
       const userEmail = email(req.body.email), secret = password(req.body.password);
 
+      accountGuard.check(userEmail, res);
+
       const user = db.prepare('SELECT * FROM users WHERE email=?').get(userEmail);
 
       const verified = await authenticate(() => verifyPassword(secret, user?.passwordHash || dummyHash), res);
 
-      if (!user || !verified) fail(401, 'Email or password is incorrect.');
+      if (!user || !verified) { accountGuard.failed(userEmail, user?.id); fail(401, 'Email or password is incorrect.'); }
+
+      accountGuard.clear(userEmail);
 
       audit(db, user.id, 'session.login', user.id);
 
@@ -319,7 +373,13 @@ export async function createApp(options = {}) {
 
       const secret = password(req.body.password);
 
-      if (!await authenticate(() => verifyPassword(secret, req.user.passwordHash), res)) fail(401, 'Current password verification failed.');
+      const guardKey = req.user.email.toLowerCase();
+
+      accountGuard.check(guardKey, res);
+
+      if (!await authenticate(() => verifyPassword(secret, req.user.passwordHash), res)) { accountGuard.failed(guardKey, req.user.id); fail(401, 'Current password verification failed.'); }
+
+      accountGuard.clear(guardKey);
 
       atomic(db, () => {
 
