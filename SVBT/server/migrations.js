@@ -20,6 +20,16 @@ export const migrations = [
       const invalid = db.prepare("SELECT count(*) n FROM transactions WHERE typeof(date)!='text' OR date IS NOT date(date) OR date<'1900-01-01'").get().n;
       if (invalid) console.warn(`Ledger check: ${invalid} existing transaction(s) have an invalid date. They were left unchanged.`);
     }
+  },
+  {
+    version: 3,
+    name: 'session-expiry-and-ledger-requests',
+    up(db) {
+      // Sessions slide on activity (idle timeout) but never past absoluteExpiresAt. Databases that
+      // ran the sessions change before migrations existed already have the column and the table.
+      if (!db.prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name='absoluteExpiresAt'").get()) db.exec('ALTER TABLE sessions ADD COLUMN absoluteExpiresAt INTEGER');
+      db.exec('CREATE TABLE IF NOT EXISTS ledger_requests(requestId TEXT PRIMARY KEY, actorId INTEGER NOT NULL REFERENCES users(id), accountId INTEGER NOT NULL REFERENCES accounts(id), requestHash TEXT NOT NULL, transactionId INTEGER NOT NULL REFERENCES transactions(id))');
+    }
   }
 ];
 

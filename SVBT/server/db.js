@@ -42,7 +42,6 @@ export function openDatabase(path) {
     CREATE TABLE IF NOT EXISTS transaction_details(transactionId INTEGER PRIMARY KEY REFERENCES transactions(id), referenceId TEXT NOT NULL DEFAULT '', occurredAt TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', version INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS statement_notes(accountId INTEGER NOT NULL REFERENCES accounts(id), month TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', version INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(accountId,month));
     CREATE TABLE IF NOT EXISTS sessions(tokenHash TEXT PRIMARY KEY, userId INTEGER REFERENCES users(id), csrfToken TEXT NOT NULL, expiresAt INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS ledger_requests(requestId TEXT PRIMARY KEY, actorId INTEGER NOT NULL REFERENCES users(id), accountId INTEGER NOT NULL REFERENCES accounts(id), requestHash TEXT NOT NULL, transactionId INTEGER NOT NULL REFERENCES transactions(id));
     CREATE TABLE IF NOT EXISTS statements(id INTEGER PRIMARY KEY, accountId INTEGER NOT NULL REFERENCES accounts(id), month TEXT NOT NULL, revision INTEGER NOT NULL, issuedAt TEXT NOT NULL, closing INTEGER NOT NULL, snapshot TEXT NOT NULL, hash TEXT NOT NULL, pdf BLOB NOT NULL, pdfHash TEXT NOT NULL, archivePath TEXT NOT NULL, UNIQUE(accountId,month,revision));
     CREATE TABLE IF NOT EXISTS investments(id INTEGER PRIMARY KEY, sector TEXT NOT NULL, status TEXT NOT NULL, targetCapital INTEGER NOT NULL CHECK(typeof(targetCapital)='integer' AND targetCapital>=0 AND targetCapital<=100000000000), risk TEXT NOT NULL, strategy TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, actorId INTEGER REFERENCES users(id), action TEXT NOT NULL, entity TEXT NOT NULL, details TEXT NOT NULL, createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
@@ -51,8 +50,6 @@ export function openDatabase(path) {
       SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM transactions WHERE id=NEW.reversalOf AND accountId=NEW.accountId AND amount=-NEW.amount AND reversalOf IS NULL AND date<=NEW.date) THEN RAISE(ABORT,'Invalid reversal') END;
     END;
   `);
-  // Sessions slide on activity (idle timeout) but never past absoluteExpiresAt.
-  if (!db.prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name='absoluteExpiresAt'").get()) db.exec('ALTER TABLE sessions ADD COLUMN absoluteExpiresAt INTEGER');
   for (const table of ['transactions', 'statements', 'audit']) {
     for (const operation of ['UPDATE', 'DELETE']) db.exec(`CREATE TRIGGER IF NOT EXISTS immutable_${table}_${operation.toLowerCase()} BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT,'Immutable ${table}'); END;`);
   }
