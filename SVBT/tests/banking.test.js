@@ -483,3 +483,15 @@ test('SQLite runs in WAL mode with a busy timeout, so a second writer waits inst
     first.close(); second.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('only the owner can flag demo accounts or import into them', async () => {
+  const f = await fixture();
+  try {
+    const admin = f.client();
+    await admin.login('tpower@siliconvalleybankandtrust.com', 'ModeratorGod!2026');
+    const accountId = f.db.prepare('SELECT id FROM accounts ORDER BY id LIMIT 1').get().id;
+    assert.equal((await admin.request(`/admin/accounts/${accountId}/demo`, 'PUT', { demo: true })).status, 403);
+    assert.equal((await admin.request(`/admin/accounts/${accountId}/import/preview`, 'POST', { csv: 'x' })).status, 403);
+    assert.equal((await admin.request(`/admin/accounts/${accountId}/import`, 'POST', { csv: 'x' })).status, 403);
+  } finally { await f.close(); }
+});

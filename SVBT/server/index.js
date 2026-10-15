@@ -18,6 +18,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDatabase, seedDemo, hashPassword, verifyPassword, atomic, audit, newAccount, publicPasswords } from './db.js';
 
 import { ensureModerator } from './provision.js';
+import { previewImport, postImport, setDemo } from './imports.js';
 
 import { digest, fail, text, accountData, postTransaction, reverseTransaction, preview, archive, statement, integrity, issueStatement, saveInvestment } from './services.js';
 
@@ -200,7 +201,7 @@ export async function createApp(options = {}) {
 
     app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
-    app.use('/api', (req, res, next) => express.json({ limit: req.path === '/admin/site-content' ? '128kb' : /^\/admin\/accounts\/\d+\/statement-notes$/.test(req.path) ? '32kb' : '16kb', strict: true })(req, res, next));
+    app.use('/api', (req, res, next) => express.json({ limit: req.path === '/admin/site-content' ? '128kb' : /^\/admin\/accounts\/\d+\/import(\/preview)?$/.test(req.path) ? '320kb' : /^\/admin\/accounts\/\d+\/statement-notes$/.test(req.path) ? '32kb' : '16kb', strict: true })(req, res, next));
 
     const cookieName = 'svbt_session';
 
@@ -443,6 +444,14 @@ export async function createApp(options = {}) {
     app.get('/api/admin/accounts/:id/statements', (req, res) => res.json(archive(db, identifier(req.params.id))));
 
     app.post('/api/admin/accounts/:id/statements', async (req, res) => res.status(201).json(await issueStatement(db, identifier(req.params.id), req.body.month, req.user.id, config.statementDir)));
+
+    const ownerOnly = (req, res, next) => req.user.role === 'owner' ? next() : next(Object.assign(new Error('Owner permission is required.'), { status: 403 }));
+
+    app.put('/api/admin/accounts/:id/demo', ownerOnly, (req, res) => res.json(setDemo(db, identifier(req.params.id), req.body.demo, req.user.id)));
+
+    app.post('/api/admin/accounts/:id/import/preview', ownerOnly, (req, res) => res.json(previewImport(db, identifier(req.params.id), req.body)));
+
+    app.post('/api/admin/accounts/:id/import', ownerOnly, (req, res) => res.status(201).json(postImport(db, identifier(req.params.id), req.body, req.user.id)));
 
     app.get('/api/admin/statements/:id/integrity', (req, res) => res.json(integrity(db, identifier(req.params.id))));
 
