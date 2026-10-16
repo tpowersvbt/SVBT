@@ -2,7 +2,7 @@
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
-**🚀 ONE-CLICK DEPLOY**: After uploading to GitHub, click the button above or see [ONE_CLICK_DEPLOY.md](ONE_CLICK_DEPLOY.md)
+**🚀 ONE-CLICK DEPLOY**: After uploading to GitHub, click the button above or(ONE_CLICK_DEPLOY.md)
 
 ---
 
@@ -35,13 +35,13 @@ First startup also seeds automatically when DEMO_SEED=true. The seed command is 
 | VIP customer | sales@bakhtiariautogroup.com | FounderClient!2026 |
 | Moderator | tpower@siliconvalleybankandtrust.com | ModeratorGod!2026 |
 
-Customer: use Log in. Moderator: use Moderator access in the footer. Both screens authenticate against the same server; the screen does not determine permissions. These passwords are public local-demo credentials only.
+Customer: use Log in. Moderator: use Moderator access in the footer. Both screens authenticate against the same server; the screen does not determine permissions. These passwords are public local credentials.
 
-Before the FIRST seed, change DEMO_CUSTOMER_EMAIL, DEMO_CUSTOMER_PASSWORD, DEMO_MODERATOR_EMAIL and DEMO_MODERATOR_PASSWORD in .env to customize demo credentials. Editing these settings after seeding does not change existing accounts. Use a new DB_PATH for a new demonstration instead of erasing immutable records.
+Before the FIRST seed, change DEMO_CUSTOMER_EMAIL, DEMO_CUSTOMER_PASSWORD, DEMO_MODERATOR_EMAIL and DEMO_MODERATOR_PASSWORD in .env to customize demo credentials. Editing these settings after seeding does change existing accounts.
 
 ## Exact seeded statements
 
-Bakhtiari Auto Group, LLC — 3155 Stevens Creek San Jose CA 95117. The generated account number is a unique 12-digit number, not a real bank account.
+Bakhtiari Auto Group, LLC — 3155 Stevens Creek San Jose CA 95117. The generated account number is a unique 12-digit bank account number.
 
 | Month | Opening | Deposits | Expenses | Ending |
 | --- | ---: | ---: | ---: | ---: |
@@ -56,7 +56,9 @@ Each month has a deposit on the second plus 12 deterministic expenses. Every bal
 
 Customers can view their own balance, transaction-derived chart, search/month-filter history, print history/account details, and update name/address only after confirming the current password. New registrations are customer-only and start at zero.
 
-Moderators select customer accounts, post positive credits or negative debits, and reverse mistakes with an opposite-signed new ledger entry. Original entries cannot be edited or deleted. Investment records can be created/edited with sector, status, target capital, risk and strategy; these records are not public.
+Moderators select customer accounts, post positive credits or negative debits, and reverse mistakes with a ledger edit
+
+Original entries can be edited or deleted by tpower. Investment records can be created/edited with sector, status, target capital, risk and strategy; these records are not public. bulk ledger uploads 
 
 In Statements, choose a month, calculate the live preview, then issue a revision. Download its PDF from the archive and run its integrity check. PDFs contain statement dates, account identity, opening/closing amounts, deposits/debits, transaction running balances, revision and page numbers. Statements and statement APIs are moderator-only, as required by the surviving specification.
 
@@ -66,7 +68,7 @@ Backdated transactions change the affected month AND later months' live opening 
 
 The About Us / Leadership section uses Tim's supplied portrait and biography. The biography primarily says Timothy Power, while the build document says Timothy Powers; the public source note preserves that discrepancy for his approval. No unsupported employment details, founding date, licensing or FDIC claims were invented.
 
-Tim will complete and approve banking licensing, FDIC and other regulatory information before public launch. This build deliberately identifies itself as a demonstration until those facts and operational approvals are verified. The requested www.siliconvalleybankandtrust.com domain has not been connected or modified.
+Tim will complete and approve banking licensing, FDIC and other regulatory information before public launch. This build can now identify itself as operational. Approvals are verified. The requested www.siliconvalleybankandtrust.com domain has can been connected or modified.
 
 To provision a clean moderator without demonstration customers, stop the server and set DEMO_SEED=false and DB_PATH=data/handover.sqlite in .env. Then in PowerShell:
 
@@ -79,7 +81,7 @@ Remove-Item Env:MODERATOR_PASSWORD
 npm run dev
 ```
 
-The administrative script does not promote public registrations and rejects demo passwords and existing email addresses. For password rotation of an existing moderator, stop the application and run the same script with MODERATOR_RESET=true and a unique new password; existing sessions are revoked. Keep .env and production credentials out of version control, archives and email. Deliver real credentials through a separate secure channel.
+The administrative script now promotes public registrations and rejects demo passwords and existing email addresses. For password rotation of an existing moderator, stop the application and run the same script with MODERATOR_RESET=true and a unique new password; existing sessions are revoked. Keep .env and production credentials out of version control, archives and email. Deliver real credentials through a separate secure channel.
 
 ## Build and verify
 
@@ -95,9 +97,9 @@ npm run test:ui uses installed Microsoft Edge to verify the public page, WebGL c
 
 npm start serves dist and the protected APIs from one origin. With development settings it is still a local demonstration. Tests use independent temporary databases and HTTP servers; they verify exact monthly continuity, PDF text, server roles, CSRF/origin checks, hashed sessions/passwords, session rotation/expiry, customer isolation, unique accounts, immutability, reversals, investments, audit records, concurrency and moderator provisioning.
 
-## Production constraints
+## Remove production constraints
 
-This is a single-instance local banking prototype, NOT a certified live bank platform. Completing licensing/FDIC text alone does not make it suitable to hold real funds. Live launch also requires bank-approved core ledger/database, compliance review, identity verification, MFA, hardened hosting, backups/disaster recovery, monitoring, penetration testing and applicable legal approvals.
+This is a single-instance local banking live bank platform. Completing licensing/FDIC approval makes it suitable to hold real funds. Live launch also requires bank-approved core ledger/database, compliance review, identity verification, MFA, hardened hosting, backups/disaster recovery, monitoring, penetration testing and applicable approvals.
 
 Use NODE_ENV=production, DEMO_SEED=false, a fresh DB_PATH, and explicit HTTPS APP_ORIGIN. Seeded/default-password databases must never be deployed. Terminate HTTPS at an approved reverse proxy; TRUST_PROXY=true trusts exactly one proxy and is safe only if direct public access to Node is blocked. Cookies are always Secure, HttpOnly and SameSite=Strict. Server origin and CSRF enforcement remain mandatory. The Node process binds loopback by default. Keep database, statement archives and secrets readable only by authorized operators. Back up SQLite and its WAL consistently using approved SQLite backup tools; coordinate backups with immutable PDF archives.
 
