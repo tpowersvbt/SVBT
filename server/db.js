@@ -52,13 +52,16 @@ export function openDatabase(path) {
 }
 export async function seedDemo(db) {
   if (db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) return;
-  const customerHash = await hashPassword(demoCredentials.customer[1]);
-  const moderatorHash = await hashPassword(demoCredentials.moderator[1]);
+  const userByEmail = (email) => db.prepare('SELECT id FROM users WHERE email=?').get(email);
+  const customerHash = userByEmail(demoCredentials.customer[0]) ? null : await hashPassword(demoCredentials.customer[1]);
+  const moderatorHash = userByEmail(demoCredentials.moderator[0]) ? null : await hashPassword(demoCredentials.moderator[1]);
   atomic(db, () => {
     if (db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) return;
-    const customer = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(demoCredentials.customer[0], 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117', 'customer', customerHash).lastInsertRowid);
-    const moderator = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(demoCredentials.moderator[0], 'Timothy Powers', 'Silicon Valley, California', 'moderator', moderatorHash).lastInsertRowid);
-    const accountId = newAccount(db, customer, 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117');
+    let customer = userByEmail(demoCredentials.customer[0])?.id;
+    if (customer === undefined) customer = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(demoCredentials.customer[0], 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117', 'customer', customerHash).lastInsertRowid);
+    let moderator = userByEmail(demoCredentials.moderator[0])?.id;
+    if (moderator === undefined) moderator = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(demoCredentials.moderator[0], 'Timothy Powers', 'Silicon Valley, California', 'moderator', moderatorHash).lastInsertRowid);
+    const accountId = db.prepare('SELECT id FROM accounts WHERE userId=?').get(customer)?.id ?? newAccount(db, customer, 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117');
     const descriptions = ['Cloud infrastructure', 'Software subscriptions', 'Office rent', 'Internet and communications', 'Business insurance', 'Accounting services', 'Digital marketing', 'Contract engineering', 'Office supplies', 'Security monitoring', 'Technology hardware', 'Business travel'];
     const base = [65000, 32000, 180000, 18000, 28000, 45000, 50000, 60000, 12000, 22000, 35000, 29700];
     const insert = db.prepare('INSERT INTO transactions(accountId,date,description,amount,actorId) VALUES (?,?,?,?,?)');
@@ -67,7 +70,7 @@ export async function seedDemo(db) {
       insert.run(accountId, `${month}-02`, m ? 'Investment funding from Bakhtiari Corp. Wells Fargo Account' : 'Opening deposit', m ? 1500000 : 1000000, moderator);
       descriptions.forEach((description, i) => insert.run(accountId, `${month}-${String(i + 3).padStart(2, '0')}`, description, -(base[i] + (i === 11 ? m * 11700 : 0)), moderator));
     }
-    for (const [sector, capital, strategy] of [['Startup technologies', 250000000, 'Milestone-based capital and runway planning'], ['Small data centers', 500000000, 'Capacity, cooling and energy resilience'], ['REITs', 350000000, 'Diversified property cash-flow review']]) db.prepare('INSERT INTO investments(sector,status,targetCapital,risk,strategy) VALUES (?,?,?,?,?)').run(sector, 'Review', capital, 'Capital at risk', strategy);
+    for (const [sector, capital, strategy] of [['Startup technologies', 250000000, 'Milestone-based capital and runway planning'], ['Small data centers', 500000000, 'Capacity, cooling and energy resilience'], ['REITs', 350000000, 'Diversified property cash-flow review']]) if (!db.prepare('SELECT id FROM investments WHERE sector=?').get(sector)) db.prepare('INSERT INTO investments(sector,status,targetCapital,risk,strategy) VALUES (?,?,?,?,?)').run(sector, 'Review', capital, 'Capital at risk', strategy);
     audit(db, moderator, 'demo.seed', accountId, { months: 4 });
     db.prepare("INSERT INTO metadata(key,value) VALUES ('demo-seeded',?)").run(String(accountId));
   });
