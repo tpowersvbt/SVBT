@@ -381,6 +381,14 @@ test('server-only moderator provisioning requires unique non-demo credentials', 
     assert.equal(afterReset.prepare('SELECT COUNT(*) AS n FROM sessions WHERE userId=?').get(user.id).n, 0);
     assert.ok(afterReset.prepare("SELECT id FROM audit WHERE action='moderator.password-reset'").get());
     afterReset.close();
+    const ownerEnv = { ...env, MODERATOR_EMAIL: 'owner@example.com', MODERATOR_PASSWORD: 'UniqueOwnerAccess!2026', MODERATOR_ROLE: 'owner' };
+    execFileSync(process.execPath, ['server/create-moderator.js'], { env: ownerEnv, stdio: 'pipe' });
+    assert.throws(() => execFileSync(process.execPath, ['server/create-moderator.js'], { env: { ...ownerEnv, MODERATOR_EMAIL: 'other@example.com', MODERATOR_ROLE: 'admin' }, stdio: 'pipe' }), /MODERATOR_ROLE must be/);
+    execFileSync(process.execPath, ['server/create-moderator.js'], { env: { ...ownerEnv, MODERATOR_RESET: 'true', MODERATOR_ROLE: 'moderator', MODERATOR_PASSWORD: 'RotatedOwnerAccess!2026' }, stdio: 'pipe' });
+    const roles = openDatabase(env.DB_PATH);
+    assert.equal(roles.prepare("SELECT role FROM staff_access WHERE userId=(SELECT id FROM users WHERE email='owner@example.com')").get().role, 'owner');
+    assert.equal(roles.prepare('SELECT role FROM staff_access WHERE userId=?').get(user.id), undefined);
+    roles.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
