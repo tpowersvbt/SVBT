@@ -26,8 +26,20 @@ The moderator is created automatically on first startup. An existing moderator's
 and role are preserved. Changing an environment password does not silently reset an account.
 For an intentional reset, set MODERATOR_RESET=true and run `npm run create-moderator`
 in the service shell, then remove MODERATOR_RESET. This invalidates the old sessions.
+To create an owner (full access, including Users and the demo import) instead of a moderator,
+set MODERATOR_ROLE=owner before running `npm run create-moderator`. The script only creates new
+accounts or rotates a password; it never changes the role of an existing account.
 No public default moderator password is supplied. A new sample customer gets an unknown,
 random password; the moderator can review its ledger without a customer login.
+
+## Production bootstrap
+
+1. Set the variables above in Render's Environment settings. Never put a password in GitHub,
+   render.yaml or any file in this repository, and never use a demonstration password in production.
+2. Keep DEMO_SEED=false. The server refuses to start in production with demo seeding on.
+3. Open the Render Shell for the service and run `npm run create-moderator`
+   (add MODERATOR_ROLE=owner for an owner account).
+4. Sign in through **Moderator access** in the footer.
 
 ## Four months of statements
 
