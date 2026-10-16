@@ -165,6 +165,10 @@ export async function createApp(options = {}) {
 
     provisionHandoverOwner(db, config.production ? 'tpower@siliconvalleybankandtrust.com' : options.ownerEmail);
 
+    if (!config.demoSeed && !db.prepare("SELECT id FROM users WHERE role='moderator' LIMIT 1").get()) {
+      console.warn('No staff account exists and demo seeding is off. Set MODERATOR_EMAIL and MODERATOR_PASSWORD (and MODERATOR_ROLE=owner for full access), then run `npm run create-moderator` from a shell on this server.');
+    }
+
     const publicUser = raw => { const user=effectiveUser(db,raw); return user ? {id:user.id,name:user.name,email:user.email,role:user.role} : null; };
     const dummyHash = await hashPassword(randomBytes(32).toString('hex'));
 
