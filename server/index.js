@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDatabase, seedDemo, demoCredentials, hashPassword, verifyPassword, atomic, audit, newAccount } from './db.js';
-import { digest, fail, text, accountData, postTransaction, reverseTransaction, preview, archive, statement, integrity, issueStatement, saveInvestment } from './services.js';
+import { digest, fail, text, accountData, postTransaction, postTransactionsBulk, reverseTransaction, preview, archive, statement, integrity, issueStatement, saveInvestment } from './services.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let authenticationActive = 0;
@@ -54,7 +54,7 @@ export async function createApp(options = {}) {
   let vite;
   try {
     // Always provision demo accounts (whether DEMO_SEED is on or off) - works in production
-    const [modEmail, modPassword] = demoCredentials.moderator;
+    if (config.demoSeed) { const [modEmail, modPassword] = demoCredentials.moderator;
     const [custEmail, custPassword] = demoCredentials.customer;
     
     // Create moderator if doesn't exist
@@ -91,7 +91,7 @@ export async function createApp(options = {}) {
           await issueStatement(db, custAccount.id, month, mod.id, config.statementDir);
         }
       }
-      console.log('✓ Demo data seeded successfully');
+      console.log('✓ Demo data seeded successfully'); } } else { const modEmail = process.env.MODERATOR_EMAIL; const modSecret = process.env.MODERATOR_PASSWORD; if (!modEmail || !modSecret) throw new Error('MODERATOR_EMAIL and MODERATOR_PASSWORD are required when DEMO_SEED is disabled.'); if (!db.prepare('SELECT id FROM users WHERE email=?').get(modEmail)) { const modHash = await hashPassword(modSecret); db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(modEmail, 'Timothy Powers', 'Silicon Valley, California', 'moderator', modHash); } console.log('Production startup: moderator provisioned from environment, no demo data.');
     }
     const dummyHash = await hashPassword(randomBytes(32).toString('hex'));
     const app = express();
@@ -134,7 +134,7 @@ export async function createApp(options = {}) {
       next();
     });
     app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-    app.use('/api', express.json({ limit: '16kb', strict: true }));
+    app.use('/api', express.json({ limit: '4mb', strict: true }));
     const cookieName = 'svbt_session';
     function makeSession(req, res, userId) {
       const token = randomBytes(32).toString('base64url'), csrfToken = randomBytes(32).toString('base64url');
@@ -219,7 +219,7 @@ export async function createApp(options = {}) {
     app.use('/api/admin', moderator);
     app.get('/api/admin/accounts', (req, res) => res.json(db.prepare('SELECT * FROM accounts ORDER BY id').all()));
     app.get('/api/admin/accounts/:id', (req, res) => res.json(accountData(db, identifier(req.params.id))));
-    app.post('/api/admin/accounts/:id/transactions', (req, res) => res.status(201).json(postTransaction(db, identifier(req.params.id), req.body, req.user.id)));
+    app.post('/api/admin/accounts/:id/transactions', (req, res) => res.status(201).json(postTransaction(db, identifier(req.params.id), req.body, req.user.id))); app.post('/api/admin/accounts/:id/transactions/bulk', (req, res) => res.status(201).json(postTransactionsBulk(db, identifier(req.params.id), req.body, req.user.id)));
     app.post('/api/admin/transactions/:id/reverse', (req, res) => res.status(201).json(reverseTransaction(db, identifier(req.params.id), req.body, req.user.id)));
     app.get('/api/admin/accounts/:id/preview', (req, res) => res.json(preview(db, identifier(req.params.id), req.query.month)));
     app.get('/api/admin/accounts/:id/statements', (req, res) => res.json(archive(db, identifier(req.params.id))));
