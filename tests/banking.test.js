@@ -349,3 +349,11 @@ test('site settings and team: public reads, moderator-only writes, validation an
     assert.deepEqual((await anon.request('/site')).data.employees.map(e => e.name), ['First']);
   } finally { await f.close(); }
 });
+
+test('brand constants: phone number and logo path', () => {
+  const app = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+  assert.match(app, /PHONE_DISPLAY = '\(844\) 842-SVBT'/);
+  assert.match(app, /PHONE_HREF = 'tel:\+18448427828'/);
+  assert.ok(app.includes('src="/svbt-logo.jpg"'));
+  assert.ok(!/824-?SVBT|8247828/i.test(app));
+});

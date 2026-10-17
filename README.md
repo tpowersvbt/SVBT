@@ -147,4 +147,4 @@ The site implements responsive navy/copper/ice styling, real extruded Three.js g
 
 ## Brand images
 
-Place `svbt-logo.png` (circular logo, used in the header and as favicon) and `svbt-facade.jpg` (bank building, used as the landing-page hero background) in `public/`. If either is missing the site falls back to the text mark and a dark gradient. Moderators manage the banner, footer, hero text and team under **Operations → Site settings / Team**.
+Place `svbt-logo.jpg` (circular logo, used in the header and as favicon) and `svbt-facade.jpg` (bank building, used as the landing-page hero background) in `public/`. If either is missing the site falls back to the text mark and a dark gradient. Moderators manage the banner, footer, hero text and team under **Operations → Site settings / Team**.
