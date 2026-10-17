@@ -1,3 +1,3 @@
-# SVBT handoff
+# Deployment notes
 
-See HANDOFF.md for the current moderator setup, sample statements, deployment steps and limitations.
+See [HANDOFF.md](HANDOFF.md). Back up the current database and statement archive and verify persistent storage before deployment.

@@ -2,14 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createApp } from '../server/index.js';
+import { seedTestLedger } from './fixtures.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 test('issued PDF text contains exact balances, dates, account identity, revisions, running balances and every page number', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'svbt-pdf-'));
-  const app = await createApp({ production: false, origin: 'http://localhost:3000', dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), demoSeed: true, frontend: false });
+  const app = await createApp({ production: false, origin: 'http://localhost:3000', dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), frontend: false });
   try {
+    await seedTestLedger(app.locals.db, app.locals.config.statementDir);
     const statements = app.locals.db.prepare('SELECT * FROM statements ORDER BY month').all();
     assert.equal(statements.length, 4);
     const ending = ['$4,233.00', '$13,349.00', '$22,348.00', '$31,230.00'];
@@ -25,7 +27,7 @@ test('issued PDF text contains exact balances, dates, account identity, revision
         pages.push(text);
       }
       const text = pages.join(' ');
-      for (const expected of ['BUSINESS CHECKING STATEMENT', 'SVBT', 'Bakhtiari Auto Group, LLC', snapshot.account.number, snapshot.startDate, snapshot.endDate, 'Revision 1', ending[index], '3155 Stevens Creek', 'San Jose', '95117']) assert.ok(text.includes(expected), `PDF ${row.month} missing ${expected}`);
+      for (const expected of ['BUSINESS CHECKING STATEMENT', 'SVBT', 'Example Customer, LLC', snapshot.account.number, snapshot.startDate, snapshot.endDate, 'Revision 1', ending[index], '3155 Stevens Creek', 'San Jose', '95117']) assert.ok(text.includes(expected), `PDF ${row.month} missing ${expected}`);
       for (const entry of snapshot.transactions) {
         assert.ok(text.includes(entry.date));
         assert.ok(text.includes(entry.description));

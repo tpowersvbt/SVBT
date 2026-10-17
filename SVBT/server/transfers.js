@@ -90,7 +90,7 @@ export function postTransfer(db, userId, request, dailyLimit) {
     const recipient = db.prepare('SELECT * FROM accounts WHERE number=?').get(toAccountNumber);
     if (!recipient) fail(404, 'Recipient account not found.');
     if (recipient.id === sender.id) fail(400, 'Choose an account other than your own.');
-    const { balance } = accountData(db, sender.id);
+    const balance = db.prepare('SELECT COALESCE(SUM(amount),0) AS balance FROM transactions WHERE accountId=? AND imported=0').get(sender.id).balance;
     if (balance < amount) fail(409, 'Insufficient available balance for this transfer.');
     const date = today();
     const sentToday = db.prepare('SELECT COALESCE(SUM(amount),0) total FROM transfers WHERE fromAccountId=? AND date=?').get(sender.id, date).total;

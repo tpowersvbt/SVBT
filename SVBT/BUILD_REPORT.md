@@ -1,3 +1,3 @@
-# SVBT handoff
+# Build and deployment notes
 
-See HANDOFF.md for the current moderator setup, sample statements, deployment steps and limitations.
+See [HANDOFF.md](HANDOFF.md) for current setup and deployment cautions. Validate with `npm test`, `npm run lint`, and `npm run build` from this directory.

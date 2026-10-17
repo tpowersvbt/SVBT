@@ -48,8 +48,9 @@ export function accountData(db, id) {
     return { month, opening, deposits, debits, closing };
   });
   const balance = rows.reduce((sum, row) => sum + row.amount, 0);
-  if (!Number.isSafeInteger(balance)) fail(409, 'Ledger balance exceeds safe integer precision.');
-  return { account: owner, transactions: rows, monthly, balance };
+  const availableBalance = rows.reduce((sum, row) => sum + (row.imported ? 0 : row.amount), 0);
+  if (!Number.isSafeInteger(balance) || !Number.isSafeInteger(availableBalance)) fail(409, 'Ledger total exceeds safe integer precision.');
+  return { account: owner, transactions: rows, monthly, balance, availableBalance, hasImportedRecords: rows.some(row => row.imported) };
 }
 export function postTransaction(db, id, values, actorId) {
   account(db, id);
@@ -76,6 +77,7 @@ export function reverseTransaction(db, id, values, actorId) {
   return atomic(db, () => {
     const original = db.prepare('SELECT * FROM transactions WHERE id=?').get(id);
     if (!original) fail(404, 'Transaction not found.');
+    if (original.imported) fail(409, 'Customer-imported ledger entries cannot be reversed through this workflow.');
     if (original.reversalOf || db.prepare('SELECT id FROM transactions WHERE reversalOf=?').get(id)) fail(409, 'This entry cannot be reversed again.');
     if (ledgerDate < original.date) fail(400, 'Reversal date cannot precede the original entry.');
     const transactionId = Number(db.prepare('INSERT INTO transactions(accountId,date,description,amount,reversalOf,actorId) VALUES (?,?,?,?,?,?)').run(original.accountId, ledgerDate, `Reversal #${id}: ${reason}`, -original.amount, id, actorId).lastInsertRowid);
@@ -105,7 +107,8 @@ export function integrity(db, id) {
 export async function issueStatement(db, id, month, actorId, directory) {
   const live = preview(db, id, month);
   const revision = db.prepare('SELECT COALESCE(MAX(revision),0)+1 AS revision FROM statements WHERE accountId=? AND month=?').get(id, month).revision;
-  const snapshot = { ...live, revision, issuedAt: new Date().toISOString() };
+  const importedRecords = Boolean(db.prepare('SELECT 1 FROM transactions WHERE accountId=? AND imported=1 AND date BETWEEN ? AND ? LIMIT 1').get(id, live.startDate, live.endDate));
+  const snapshot = { ...live, importedRecords, revision, issuedAt: new Date().toISOString() };
   const serialized = JSON.stringify(snapshot), pdf = await renderStatement(snapshot);
   mkdirSync(directory, { recursive: true });
   // Account numbers can be reassigned, so the account id keeps archive names unique.

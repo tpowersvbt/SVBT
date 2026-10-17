@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { openDatabase, newAccount } from '../server/db.js';
 import { migrate } from '../server/migrations.js';
-import { accountData, issueStatement } from '../server/services.js';
-import { parseMoney, previewImport, postImport, setDemo } from '../server/imports.js';
+import { accountData, issueStatement, reverseTransaction } from '../server/services.js';
+import { parseMoney, previewImport, postImport } from '../server/imports.js';
+import { postTransfer } from '../server/transfers.js';
 
 // Same layout as an exported cash book: a first section with no year heading, then "Month YYYY"
 // headings, repeated header rows, blank separators, Unicode minus signs and quoted amounts.
@@ -29,8 +30,9 @@ function bank() {
   migrate(db);
   const user = (email, role) => Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(email, email, 'Address', role, 'x').lastInsertRowid);
   const owner = user('owner@example.com', 'moderator');
-  const id = newAccount(db, user('demo@example.com', 'customer'), 'Example Demo Co', 'Address');
-  return { dir, db, owner, id, close() { db.close(); rmSync(dir, { recursive: true, force: true }); } };
+  const customer = user('new@example.com', 'customer');
+  const id = newAccount(db, customer, 'Example Customer Co', 'Address');
+  return { dir, db, owner, customer, id, close() { db.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
 test('cash-book amounts parse to exact cents', () => {
@@ -58,19 +60,26 @@ test('preview reads every section, infers the year and reconciles to the running
   } finally { b.close(); }
 });
 
-test('imports post only into demo accounts, once, and the account stays a demo afterwards', () => {
+test('uploads are limited to an empty new-account ledger and imported entries are marked', () => {
   const b = bank();
   try {
     const { fileHash } = previewImport(b.db, b.id, { csv: sheet });
-    assert.throws(() => postImport(b.db, b.id, { csv: sheet, fileHash }, b.owner), /only allowed into demo accounts/);
-    setDemo(b.db, b.id, true, b.owner);
     assert.throws(() => postImport(b.db, b.id, { csv: sheet, fileHash: 'stale' }, b.owner), /changed since it was previewed/);
     const result = postImport(b.db, b.id, { csv: sheet, fileHash }, b.owner);
     assert.equal(result.rows, 5);
-    assert.equal(accountData(b.db, b.id).balance, 570001);
-    assert.throws(() => postImport(b.db, b.id, { csv: sheet, fileHash }, b.owner), /Running cash|already imported|problem/);
-    assert.throws(() => setDemo(b.db, b.id, false, b.owner), /stays a demo account/);
-    assert.throws(() => b.db.prepare('UPDATE accounts SET demo=0 WHERE id=?').run(b.id), /imported demonstration data/);
+    const data = accountData(b.db, b.id);
+    assert.equal(data.balance, 570001);
+    assert.equal(data.availableBalance, 0);
+    assert.equal(data.hasImportedRecords, true);
+    assert.equal(b.db.prepare('SELECT COUNT(*) n FROM transactions WHERE accountId=? AND imported=1').get(b.id).n, 5);
+    assert.throws(() => previewImport(b.db, b.id, { csv: sheet }), /only available before the account has any ledger entries/);
+    assert.throws(() => postImport(b.db, b.id, { csv: sheet, fileHash }, b.owner), /only available before the account has any ledger entries/);
+    const importedId = b.db.prepare('SELECT id FROM transactions WHERE accountId=? ORDER BY id LIMIT 1').get(b.id).id;
+    assert.throws(() => reverseTransaction(b.db, importedId, { date: '2026-07-11', reason: 'Incorrect imported entry' }, b.owner), /cannot be reversed/);
+    const recipient = newAccount(b.db, b.owner, 'Recipient Co', 'Address');
+    const recipientNumber = b.db.prepare('SELECT number FROM accounts WHERE id=?').get(recipient).number;
+    assert.throws(() => postTransfer(b.db, b.customer, { toAccountNumber: recipientNumber, amount: 100, description: '', requestId: 'import-cannot-fund-transfer-001' }, 1000000), /Insufficient available balance/);
+    assert.equal(b.db.prepare("SELECT name FROM pragma_table_info('accounts') WHERE name='demo'").get(), undefined);
     assert.ok(b.db.prepare("SELECT id FROM audit WHERE action='import.post'").get());
   } finally { b.close(); }
 });
@@ -78,7 +87,6 @@ test('imports post only into demo accounts, once, and the account stays a demo a
 test('a rejected import posts nothing', () => {
   const b = bank();
   try {
-    setDemo(b.db, b.id, true, b.owner);
     const csv = sheet.replace('July 10,', 'July 32,');
     const preview = previewImport(b.db, b.id, { csv });
     assert.equal(preview.errors.length, 1);
@@ -87,10 +95,9 @@ test('a rejected import posts nothing', () => {
   } finally { b.close(); }
 });
 
-test('every page of a demo account statement says it is a sample, whatever the branding says', async () => {
+test('issued statements identify imported customer records as unverified', async () => {
   const b = bank();
   try {
-    setDemo(b.db, b.id, true, b.owner);
     const { fileHash } = previewImport(b.db, b.id, { csv: sheet });
     postImport(b.db, b.id, { csv: sheet, fileHash }, b.owner);
     const issued = await issueStatement(b.db, b.id, '2026-06', b.owner, join(b.dir, 'statements'));
@@ -98,9 +105,9 @@ test('every page of a demo account statement says it is a sample, whatever the b
     const document = await getDocument({ data: new Uint8Array(row.pdf), useSystemFonts: true, isEvalSupported: false }).promise;
     for (let page = 1; page <= document.numPages; page++) {
       const text = (await (await document.getPage(page)).getTextContent()).items.map(item => item.str).join(' ');
-      assert.ok(text.includes('SAMPLE · NOT A BANK STATEMENT'), text);
-      assert.ok(text.includes('Not a bank statement and not a record of funds held'), text);
+      assert.ok(text.includes('Customer-provided imported records are not independently verified by SVBT.'), text);
+      assert.ok(text.includes('Internal ledger record; not proof of funds or payment settlement.'), text);
     }
-    assert.match((await document.getMetadata()).info.Title, /^SAMPLE - /);
+    assert.match((await document.getMetadata()).info.Title, /^Customer-provided records - /);
   } finally { b.close(); }
 });

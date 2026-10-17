@@ -8,7 +8,7 @@ const email = text(process.env.MODERATOR_EMAIL, 'MODERATOR_EMAIL', 254).toLowerC
 const password = process.env.MODERATOR_PASSWORD;
 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('MODERATOR_EMAIL must be a valid email address.');
 if (typeof password !== 'string' || password.length < 12 || password.length > 1024) throw new Error('MODERATOR_PASSWORD must contain 12–1024 characters.');
-if (publicPasswords.has(password)) throw new Error('Provisioning requires a unique password, not a demonstration password.');
+if (publicPasswords.has(password)) throw new Error('Provisioning requires a unique password that has not been publicly disclosed.');
 const role = process.env.MODERATOR_ROLE || 'moderator';
 if (!['moderator', 'owner'].includes(role)) throw new Error('MODERATOR_ROLE must be moderator or owner.');
 const name = text(process.env.MODERATOR_NAME || 'Timothy Powers', 'MODERATOR_NAME', 200);

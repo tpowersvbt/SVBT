@@ -10,7 +10,8 @@ The two new failed Blueprint services use the older `master` branch. They are no
 - Owners can add customer/staff accounts and assign customer, moderator, administrator or owner permissions. Role changes invalidate the affected user's sessions. Owners cannot demote themselves or remove the last owner.
 - Owners and administrators can edit customer names, addresses and account numbers, and publish homepage copy, sector information and disclosures.
 - Existing project, leadership, investment, transaction and statement tools remain available to staff.
-- Public review/sample banners and workspace demo wording are removed. Previously issued statements and sample ledger records are not rewritten or deleted.
+- Startup no longer creates sample users, accounts, ledger entries, investments, or statements. Legacy rows and issued statements are preserved; the migration marks legacy imported/sample transactions as customer-provided and removes the account flag.
+- Owners can upload customer ledger CSVs only before the account has any ledger entries. Imported values do not count as transferable funds; statements containing them carry a fixed non-verification notice.
 - Site content uses plain text, version checks and audit entries. It does not accept executable HTML.
 
 ## Before merging / deploying

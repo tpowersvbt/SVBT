@@ -71,6 +71,21 @@ export const migrations = [
       db.exec(`CREATE TABLE password_resets(tokenHash TEXT PRIMARY KEY, userId INTEGER NOT NULL REFERENCES users(id), expiresAt INTEGER NOT NULL);
         CREATE INDEX password_resets_user ON password_resets(userId);`);
     }
+  },
+  {
+    version: 7,
+    name: 'first-ledger-imports',
+    up(db) {
+      db.exec("ALTER TABLE transactions ADD COLUMN imported INTEGER NOT NULL DEFAULT 0 CHECK(imported IN (0,1))");
+      db.exec('DROP TRIGGER IF EXISTS immutable_transactions_update');
+      db.exec(`UPDATE transactions SET imported=1 WHERE
+        EXISTS (SELECT 1 FROM imports i WHERE i.accountId=transactions.accountId AND transactions.id BETWEEN i.firstTransactionId AND i.lastTransactionId)
+        OR EXISTS (SELECT 1 FROM accounts a WHERE a.id=transactions.accountId AND a.demo=1)
+        OR transactions.accountId=(SELECT CAST(value AS INTEGER) FROM metadata WHERE key='demo-seeded')`);
+      db.exec(`CREATE TRIGGER immutable_transactions_update BEFORE UPDATE ON transactions BEGIN SELECT RAISE(ABORT,'Immutable transactions'); END;
+        DROP TRIGGER IF EXISTS demo_stays_on_after_import;
+        ALTER TABLE accounts DROP COLUMN demo;`);
+    }
   }
 ];
 

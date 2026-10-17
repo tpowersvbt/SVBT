@@ -22,6 +22,7 @@ test('a reassigned account number cannot overwrite another account\'s issued sta
   const dir = mkdtempSync(join(tmpdir(), 'svbt-data-'));
   const { db, staff, account } = bank(dir);
   try {
+    migrate(db);
     const first = account('first@example.com'), second = account('second@example.com');
     for (const id of [first, second]) postTransaction(db, id, { date: '2026-01-05', description: 'Deposit', amount: 10000 }, staff);
     const original = await issueStatement(db, first, '2026-01', staff, join(dir, 'statements'));

@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { createApp } from '../server/index.js';
 import { openDatabase, verifyPassword, hashPassword } from '../server/db.js';
 import { digest } from '../server/services.js';
+import { seedTestLedger, promoteFixtureOwner } from './fixtures.js';
 
 const origin = 'http://localhost:3000';
 
@@ -56,8 +57,11 @@ test('project and biography publishing keeps drafts private and requires moderat
   } finally { await f.close(); }
 });
 async function fixture(options = {}) {
+  const { testData = true, ...appOptions } = options;
   const directory = mkdtempSync(join(tmpdir(), 'svbt-test-'));
-  const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), demoSeed: true, ...options });
+  const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), ...appOptions });
+  if (testData) await seedTestLedger(app.locals.db, app.locals.config.statementDir);
+  promoteFixtureOwner(app.locals.db, appOptions.ownerEmail);
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -249,14 +253,14 @@ test('validated reversals, investment administration, audit records and SQL-safe
     assert.equal(update.data.status, 'Active');
     assert.equal((await c.request('/admin/investments', 'POST', { ...value, targetCapital: -1 })).status, 400);
     const trail = (await c.request('/admin/audit')).data;
-    for (const action of ['transaction.post', 'transaction.reverse', 'investment.save', 'session.login', 'statement.issue', 'demo.seed']) assert.ok(trail.some(row => row.action === action));
+    for (const action of ['transaction.post', 'transaction.reverse', 'investment.save', 'session.login', 'statement.issue', 'test.fixture.seed']) assert.ok(trail.some(row => row.action === action));
     assert.ok(!JSON.stringify(trail).includes('ModeratorGod!2026'));
     assert.equal((await c.request('/admin/accounts/999')).status, 404);
   } finally { await f.close(); }
 });
 
 test('rate limiting is server-enforced', async () => {
-  const f = await fixture({ demoSeed: false, authRateLimit: 2 });
+  const f = await fixture({ testData: false, authRateLimit: 2 });
   try {
     const c = f.client();
     await c.request('/session');
@@ -266,7 +270,7 @@ test('rate limiting is server-enforced', async () => {
     assert.ok(Number(denied.headers.get('retry-after')) > 0);
     assert.equal((await c.request('/register', 'POST', { name: 'Founder', address: 'A', email: 'new@example.com', password: 'UniquePassword!2026' }, { 'X-Forwarded-For': '203.0.113.4' })).status, 429);
   } finally { await f.close(); }
-  const registration = await fixture({ demoSeed: false, authRateLimit: 2 });
+  const registration = await fixture({ testData: false, authRateLimit: 2 });
   try {
     const c = registration.client();
     await c.request('/session');
@@ -277,8 +281,8 @@ test('rate limiting is server-enforced', async () => {
 });
 
 test('authentication memory capacity is shared across apps and released after completion', async () => {
-  const first = await fixture({ demoSeed: false });
-  const second = await fixture({ demoSeed: false });
+  const first = await fixture({ testData: false });
+  const second = await fixture({ testData: false });
   try {
     const clients = [first.client(), second.client(), first.client(), second.client(), first.client(), second.client()];
     for (const c of clients) await c.request('/session');
@@ -293,11 +297,10 @@ test('authentication memory capacity is shared across apps and released after co
   } finally { await first.close(); await second.close(); }
 });
 
-test('production fails closed and unseeded databases have no default users', async () => {
-  await assert.rejects(createApp({ production: true, demoSeed: true, origin: 'https://bank.example', dbPath: ':memory:', frontend: false }), /seeding is forbidden/);
+test('production starts without creating customer accounts or sample ledger records', async () => {
   await assert.rejects(createApp({ production: true, origin: '', dbPath: ':memory:', frontend: false }), /explicit valid origin/);
   await assert.rejects(createApp({ production: true, origin, dbPath: ':memory:', frontend: false }), /HTTPS/);
-  const f = await fixture({ production: true, demoSeed: false, origin: 'https://bank.example' });
+  const f = await fixture({ production: true, testData: false, origin: 'https://bank.example' });
   try {
     assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 0);
     const health = await f.client().request('/health');
@@ -312,12 +315,17 @@ test('production fails closed and unseeded databases have no default users', asy
     assert.equal((await fetch(`${f.url}/`)).status, 404);
   } finally { await f.close(); }
   const seeded = await fixture();
-  try { await assert.rejects(createApp({ dbPath: seeded.app.locals.config.dbPath, production: true, demoSeed: false, origin: 'https://bank.example', frontend: false }), /demo-seeded database/); }
+  try {
+    const startup = await createApp({ dbPath: seeded.app.locals.config.dbPath, production: true, origin: 'https://bank.example', frontend: false });
+    assert.equal(startup.locals.db.prepare('SELECT COUNT(*) n FROM transactions').get().n, 52);
+    assert.equal(startup.locals.db.prepare('SELECT COUNT(*) n FROM users').get().n, 2);
+    await startup.locals.close();
+  }
   finally { await seeded.close(); }
 });
 
 test('production refuses sign-in and new accounts that use a published password', async () => {
-  const f = await fixture({ production: true, demoSeed: false, origin: 'https://bank.example' });
+  const f = await fixture({ production: true, testData: false, origin: 'https://bank.example' });
   try {
     const insert = f.db.prepare("INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,'moderator',?)");
     insert.run('leaked@example.com', 'Leaked', 'A', await hashPassword('svbt2026!'));
@@ -333,11 +341,11 @@ test('production refuses sign-in and new accounts that use a published password'
   } finally { await f.close(); }
 });
 
-test('persistent demo startup is idempotent and concurrent statement issuance is serialized', async () => {
+test('startup preserves existing ledger records and concurrent statement issuance is serialized', async () => {
   const f = await fixture();
   try {
     const before = f.db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n;
-    const startup = await createApp({ dbPath: f.app.locals.config.dbPath, production: false, origin, demoSeed: true, frontend: false, statementDir: f.app.locals.config.statementDir });
+    const startup = await createApp({ dbPath: f.app.locals.config.dbPath, production: false, origin, frontend: false, statementDir: f.app.locals.config.statementDir });
     assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 2);
     assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, before);
     assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM statements').get().n, 4);
@@ -357,9 +365,9 @@ test('persistent demo startup is idempotent and concurrent statement issuance is
   } finally { await f.close(); }
 });
 
-test('server-only moderator provisioning requires unique non-demo credentials', async () => {
+test('server-only moderator provisioning requires a unique undisclosed password', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'svbt-provision-'));
-  const env = { ...process.env, NODE_ENV: 'test', DEMO_SEED: 'false', DB_PATH: join(directory, 'bank.sqlite'), MODERATOR_EMAIL: 'operations@example.com', MODERATOR_PASSWORD: 'UniqueOperations!2026' };
+  const env = { ...process.env, NODE_ENV: 'test', DB_PATH: join(directory, 'bank.sqlite'), MODERATOR_EMAIL: 'operations@example.com', MODERATOR_PASSWORD: 'UniqueOperations!2026' };
   try {
     execFileSync(process.execPath, ['server/create-moderator.js'], { env, stdio: 'pipe' });
     const db = openDatabase(env.DB_PATH);
@@ -370,7 +378,7 @@ test('server-only moderator provisioning requires unique non-demo credentials', 
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM accounts').get().n, 0);
     db.close();
     assert.throws(() => execFileSync(process.execPath, ['server/create-moderator.js'], { env, stdio: 'pipe' }), /email already exists/);
-    assert.throws(() => execFileSync(process.execPath, ['server/create-moderator.js'], { env: { ...env, MODERATOR_PASSWORD: 'ModeratorGod!2026' }, stdio: 'pipe' }), /demonstration password/);
+    assert.throws(() => execFileSync(process.execPath, ['server/create-moderator.js'], { env: { ...env, MODERATOR_PASSWORD: 'ModeratorGod!2026' }, stdio: 'pipe' }), /publicly disclosed/);
     const rotation = { ...env, MODERATOR_RESET: 'true', MODERATOR_PASSWORD: 'RotatedOperations!2026' };
     const beforeReset = openDatabase(env.DB_PATH);
     beforeReset.prepare('INSERT INTO sessions(tokenHash,userId,csrfToken,expiresAt) VALUES (?,?,?,?)').run(digest('old-session'), user.id, 'csrf', Date.now() + 100000);
@@ -492,13 +500,13 @@ test('SQLite runs in WAL mode with a busy timeout, so a second writer waits inst
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test('only the owner can flag demo accounts or import into them', async () => {
+test('only the owner can import ledger records and the obsolete flag route is gone', async () => {
   const f = await fixture();
   try {
     const admin = f.client();
     await admin.login('tpower@siliconvalleybankandtrust.com', 'ModeratorGod!2026');
     const accountId = f.db.prepare('SELECT id FROM accounts ORDER BY id LIMIT 1').get().id;
-    assert.equal((await admin.request(`/admin/accounts/${accountId}/demo`, 'PUT', { demo: true })).status, 403);
+    assert.equal((await admin.request(`/admin/accounts/${accountId}/demo`, 'PUT', { demo: true })).status, 404);
     assert.equal((await admin.request(`/admin/accounts/${accountId}/import/preview`, 'POST', { csv: 'x' })).status, 403);
     assert.equal((await admin.request(`/admin/accounts/${accountId}/import`, 'POST', { csv: 'x' })).status, 403);
   } finally { await f.close(); }

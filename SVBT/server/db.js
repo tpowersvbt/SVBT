@@ -5,10 +5,9 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 const derive = promisify(scrypt);
-export const demoCredentials = { customer: [process.env.DEMO_CUSTOMER_EMAIL || 'sales@bakhtiariautogroup.com', process.env.DEMO_CUSTOMER_PASSWORD || 'FounderClient!2026'], moderator: [process.env.DEMO_MODERATOR_EMAIL || 'tpower@siliconvalleybankandtrust.com', process.env.DEMO_MODERATOR_PASSWORD || 'ModeratorGod!2026'] };
 // Passwords that have been published in this repository, its history or its guides. They are
-// local-demo values only and are refused for real accounts.
-export const publicPasswords = new Set(['FounderClient!2026', 'ModeratorGod!2026', 'svbt2026!', 'YourSecurePassword123!@#', 'YourSecurePassword!2026', ...Object.values(demoCredentials).map(([, value]) => value)]);
+// refused for real accounts.
+export const publicPasswords = new Set(['FounderClient!2026', 'ModeratorGod!2026', 'svbt2026!', 'YourSecurePassword123!@#', 'YourSecurePassword!2026']);
 export async function hashPassword(password) {
   const salt = randomBytes(32).toString('hex');
   const hash = await derive(password, salt, 64, { N: 131072, r: 8, p: 1, maxmem: 256 * 1024 * 1024 });
@@ -55,36 +54,3 @@ export function openDatabase(path) {
   }
   return db;
 }
-export async function seedDemo(db, { moderatorId, customerPassword } = {}) {
-  if (db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) return;
-  const customerHash = await hashPassword(customerPassword || demoCredentials.customer[1]);
-  const moderatorHash = moderatorId ? null : await hashPassword(demoCredentials.moderator[1]);
-  atomic(db, () => {
-    if (db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) return;
-    function accountUser(email, name, address, role, hash) {
-      const existing = db.prepare('SELECT id,role FROM users WHERE email=?').get(email);
-      if (existing) {
-        if (existing.role !== role) throw new Error('Sample account email belongs to a different role.');
-        return existing.id;
-      }
-      return Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(email, name, address, role, hash).lastInsertRowid);
-    }
-    const customer = accountUser(demoCredentials.customer[0], 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117', 'customer', customerHash);
-    const moderator = moderatorId || accountUser(demoCredentials.moderator[0], 'Timothy Powers', 'Silicon Valley, California', 'moderator', moderatorHash);
-    const existingAccount = db.prepare('SELECT id FROM accounts WHERE userId=?').get(customer);
-    const accountId = existingAccount?.id || newAccount(db, customer, 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117');
-    if (db.prepare('SELECT id FROM transactions WHERE accountId=?').get(accountId)) throw new Error('Existing ledger has activity; sample data was not added.');
-    const descriptions = ['Cloud infrastructure', 'Software subscriptions', 'Office rent', 'Internet and communications', 'Business insurance', 'Accounting services', 'Digital marketing', 'Contract engineering', 'Office supplies', 'Security monitoring', 'Technology hardware', 'Business travel'];
-    const base = [65000, 32000, 180000, 18000, 28000, 45000, 50000, 60000, 12000, 22000, 35000, 29700];
-    const insert = db.prepare('INSERT INTO transactions(accountId,date,description,amount,actorId) VALUES (?,?,?,?,?)');
-    for (let m = 0; m < 4; m++) {
-      const month = `2026-${String(m + 6).padStart(2, '0')}`;
-      insert.run(accountId, `${month}-02`, m ? 'Investment funding from Bakhtiari Corp. Wells Fargo Account' : 'Opening deposit', m ? 1500000 : 1000000, moderator);
-      descriptions.forEach((description, i) => insert.run(accountId, `${month}-${String(i + 3).padStart(2, '0')}`, description, -(base[i] + (i === 11 ? m * 11700 : 0)), moderator));
-    }
-    for (const [sector, capital, strategy] of [['Startup technologies', 250000000, 'Milestone-based capital and runway planning'], ['Small data centers', 500000000, 'Capacity, cooling and energy resilience'], ['REITs', 350000000, 'Diversified property cash-flow review']]) db.prepare('INSERT INTO investments(sector,status,targetCapital,risk,strategy) VALUES (?,?,?,?,?)').run(sector, 'Review', capital, 'Capital at risk', strategy);
-    audit(db, moderator, 'demo.seed', accountId, { months: 4 });
-    db.prepare("INSERT INTO metadata(key,value) VALUES ('demo-seeded',?)").run(String(accountId));
-  });
-}
-

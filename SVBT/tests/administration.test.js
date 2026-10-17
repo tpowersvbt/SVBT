@@ -5,10 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { createApp } from '../server/index.js';
+import { seedTestLedger, promoteFixtureOwner } from './fixtures.js';
 const origin='http://localhost:3000';
 async function fixture(options = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'svbt-test-'));
-  const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), demoSeed: true, ...options });
+  const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), ...options });
+  await seedTestLedger(app.locals.db, app.locals.config.statementDir);
+  promoteFixtureOwner(app.locals.db, options.ownerEmail);
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = `http://127.0.0.1:${server.address().port}`;

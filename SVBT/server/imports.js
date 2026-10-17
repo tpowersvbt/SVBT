@@ -1,6 +1,4 @@
-// Bulk import of a cash-book CSV into a demo account. Imported figures are a demonstration, so
-// they may only land in accounts flagged as demo, and every statement PDF for such an account is
-// stamped as a sample (see pdf.js). An account that has received an import can never be unflagged.
+// Import a customer-provided cash book before an account's first ledger entry.
 import { atomic, audit } from './db.js';
 import { account, accountData, digest, fail, date } from './services.js';
 
@@ -69,6 +67,9 @@ export function parseCashBook(csv, defaultYear) {
 // Checks every row against the sheet's running cash column, starting from the account's balance.
 export function previewImport(db, id, values) {
   const target = account(db, id);
+  if (db.prepare('SELECT 1 FROM transactions WHERE accountId=? LIMIT 1').get(id) || db.prepare('SELECT 1 FROM imports WHERE accountId=? LIMIT 1').get(id)) {
+    fail(409, 'Ledger uploads are only available before the account has any ledger entries.');
+  }
   const yearValue = values.year === undefined || values.year === null || values.year === '' ? undefined : Number(values.year);
   if (yearValue !== undefined && (!Number.isSafeInteger(yearValue) || yearValue < 1900 || yearValue > 9999)) fail(400, 'Year must be a four-digit year.');
   const { rows, errors } = parseCashBook(values.csv, yearValue);
@@ -81,35 +82,25 @@ export function previewImport(db, id, values) {
   errors.sort((a, b) => a.line - b.line);
   const deposits = rows.filter(row => row.amount > 0).reduce((sum, row) => sum + row.amount, 0);
   const debits = rows.filter(row => row.amount < 0).reduce((sum, row) => sum - row.amount, 0);
-  return { account: { id: target.id, name: target.name, number: target.number, demo: Boolean(target.demo) }, opening, deposits, debits, closing: balance, rows, errors, fileHash: digest(values.csv) };
+  return { account: { id: target.id, name: target.name, number: target.number }, opening, deposits, debits, closing: balance, rows, errors, fileHash: digest(values.csv) };
 }
 
 export function postImport(db, id, values, actorId) {
   return atomic(db, () => {
-    if (!account(db, id).demo) fail(409, 'Imports are only allowed into demo accounts. Mark the account as a demo first.');
+    account(db, id);
+    if (db.prepare('SELECT 1 FROM transactions WHERE accountId=? LIMIT 1').get(id) || db.prepare('SELECT 1 FROM imports WHERE accountId=? LIMIT 1').get(id)) {
+      fail(409, 'Ledger uploads are only available before the account has any ledger entries.');
+    }
     const result = previewImport(db, id, values);
     if (!result.rows.length) fail(400, 'The CSV has no transaction rows.');
     if (result.errors.length) fail(422, `The CSV has ${result.errors.length} problem(s). Preview it and fix them before importing.`);
     if (values.fileHash !== result.fileHash) fail(409, 'The CSV changed since it was previewed. Preview it again.');
     if (db.prepare('SELECT id FROM imports WHERE accountId=? AND fileHash=?').get(id, result.fileHash)) fail(409, 'This exact file was already imported into this account.');
-    const insert = db.prepare('INSERT INTO transactions(accountId,date,description,amount,actorId) VALUES (?,?,?,?,?)');
+    const insert = db.prepare('INSERT INTO transactions(accountId,date,description,amount,actorId,imported) VALUES (?,?,?,?,?,1)');
     const ids = result.rows.map(row => Number(insert.run(id, row.date, row.description, row.amount, actorId).lastInsertRowid));
     const importId = Number(db.prepare('INSERT INTO imports(accountId,actorId,fileHash,rowCount,firstTransactionId,lastTransactionId,closing) VALUES (?,?,?,?,?,?,?)').run(id, actorId, result.fileHash, ids.length, ids[0], ids.at(-1), result.closing).lastInsertRowid);
     if (accountData(db, id).balance !== result.closing) fail(409, 'Imported balance did not match the sheet.');
     audit(db, actorId, 'import.post', importId, { accountId: id, rows: ids.length, deposits: result.deposits, debits: result.debits, closing: result.closing, fileHash: result.fileHash });
     return { importId, rows: ids.length, closing: result.closing };
-  });
-}
-
-export function setDemo(db, id, demo, actorId) {
-  if (typeof demo !== 'boolean') fail(400, 'demo must be true or false.');
-  return atomic(db, () => {
-    const target = account(db, id);
-    if (!demo && db.prepare('SELECT id FROM imports WHERE accountId=?').get(id)) fail(409, 'This account holds imported demonstration data, so it stays a demo account.');
-    if (Boolean(target.demo) !== demo) {
-      db.prepare('UPDATE accounts SET demo=? WHERE id=?').run(demo ? 1 : 0, id);
-      audit(db, actorId, demo ? 'account.demo.on' : 'account.demo.off', id);
-    }
-    return { ...account(db, id), demo };
   });
 }

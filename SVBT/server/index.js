@@ -16,10 +16,10 @@ import { resolve, dirname } from 'node:path';
 
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { openDatabase, seedDemo, hashPassword, verifyPassword, atomic, audit, newAccount, publicPasswords } from './db.js';
+import { openDatabase, hashPassword, verifyPassword, atomic, audit, newAccount, publicPasswords } from './db.js';
 
 import { ensureModerator } from './provision.js';
-import { previewImport, postImport, setDemo } from './imports.js';
+import { previewImport, postImport } from './imports.js';
 import { installPasswordReset, resendMailer } from './password-reset.js';
 
 import { digest, fail, text, accountData, postTransaction, reverseTransaction, preview, archive, statement, integrity, issueStatement, saveInvestment } from './services.js';
@@ -65,12 +65,6 @@ export function configuration(options = {}) {
     if (url.origin !== allowed || !['http:', 'https:'].includes(url.protocol) || (production && url.protocol !== 'https:')) throw new Error('APP_ORIGINS must contain exact origins, HTTPS in production.');
   }
 
-  const sampleData = options.sampleData ?? process.env.SAMPLE_DATA === 'true';
-
-  const demoSeed = options.demoSeed ?? (process.env.DEMO_SEED === undefined ? !production : process.env.DEMO_SEED === 'true');
-
-  if (production && demoSeed) throw new Error('Demonstration seeding is forbidden in production.');
-
   const authRateLimit = options.authRateLimit ?? 30;
 
   if (!Number.isSafeInteger(authRateLimit) || authRateLimit < 1) throw new Error('authRateLimit must be a positive integer.');
@@ -83,7 +77,7 @@ export function configuration(options = {}) {
   const transferDailyLimit = options.transferDailyLimit ?? Number(process.env.TRANSFER_DAILY_LIMIT_CENTS || 1000000);
   if (!Number.isSafeInteger(transferDailyLimit) || transferDailyLimit < 1 || transferDailyLimit > 100000000000) throw new Error('TRANSFER_DAILY_LIMIT_CENTS must be a positive whole number of cents.');
 
-  return { production, origin, origins, demoSeed, transferDailyLimit, sampleData, authRateLimit, accountFailureLimit, sessionRateLimit, sessionIdleMs, frontend: options.frontend ?? true, dbPath: options.dbPath ?? resolve(process.env.DB_PATH || resolve(root, 'data/bank.sqlite')), statementDir: resolve(options.statementDir ?? process.env.STATEMENT_DIR ?? resolve(root, 'monthly/statements')), trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true', dev: options.dev ?? false };
+  return { production, origin, origins, transferDailyLimit, authRateLimit, accountFailureLimit, sessionRateLimit, sessionIdleMs, frontend: options.frontend ?? true, dbPath: options.dbPath ?? resolve(process.env.DB_PATH || resolve(root, 'data/bank.sqlite')), statementDir: resolve(options.statementDir ?? process.env.STATEMENT_DIR ?? resolve(root, 'monthly/statements')), trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true', dev: options.dev ?? false };
 
 }
 
@@ -133,40 +127,12 @@ export async function createApp(options = {}) {
 
   try {
 
-    if (config.production && !config.sampleData && db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) {
-
-      throw new Error('A demo-seeded database requires SAMPLE_DATA=true for operations review.');
-
-    }
-
-    const moderatorId = await ensureModerator(db);
-
-    if (config.sampleData && !moderatorId) throw new Error('SAMPLE_DATA requires MODERATOR_EMAIL and a provisioned moderator.');
-
-    if (config.demoSeed || config.sampleData) {
-
-      await seedDemo(db, config.sampleData ? { moderatorId, customerPassword: randomBytes(48).toString('hex') } : {});
-
-      const accountId = Number(db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get().value);
-
-      const actor = moderatorId || db.prepare("SELECT id FROM users WHERE role='moderator' ORDER BY id LIMIT 1").get().id;
-
-      for (const month of ['2026-06', '2026-07', '2026-08', '2026-09']) {
-
-        if (!db.prepare('SELECT id FROM statements WHERE accountId=? AND month=?').get(accountId, month)) {
-
-          await issueStatement(db, accountId, month, actor, config.statementDir);
-
-        }
-
-      }
-
-    }
+    await ensureModerator(db);
 
     provisionHandoverOwner(db, config.production ? 'tpower@siliconvalleybankandtrust.com' : options.ownerEmail);
 
-    if (!config.demoSeed && !db.prepare("SELECT id FROM users WHERE role='moderator' LIMIT 1").get()) {
-      console.warn('No staff account exists and demo seeding is off. Set MODERATOR_EMAIL and MODERATOR_PASSWORD (and MODERATOR_ROLE=owner for full access), then run `npm run create-moderator` from a shell on this server.');
+    if (!db.prepare("SELECT id FROM users WHERE role='moderator' LIMIT 1").get()) {
+      console.warn('No staff account exists. Set MODERATOR_EMAIL and MODERATOR_PASSWORD (and MODERATOR_ROLE=owner for full access), then run `npm run create-moderator` from a shell on this server.');
     }
 
     const publicUser = raw => { const user=effectiveUser(db,raw); return user ? {id:user.id,name:user.name,email:user.email,role:user.role} : null; };
@@ -478,8 +444,6 @@ export async function createApp(options = {}) {
 
     const ownerOnly = (req, res, next) => req.user.role === 'owner' ? next() : next(Object.assign(new Error('Owner permission is required.'), { status: 403 }));
 
-    app.put('/api/admin/accounts/:id/demo', ownerOnly, (req, res) => res.json(setDemo(db, identifier(req.params.id), req.body.demo, req.user.id)));
-
     app.post('/api/admin/accounts/:id/import/preview', ownerOnly, (req, res) => res.json(previewImport(db, identifier(req.params.id), req.body)));
 
     app.post('/api/admin/accounts/:id/import', ownerOnly, (req, res) => res.status(201).json(postImport(db, identifier(req.params.id), req.body, req.user.id)));
@@ -559,5 +523,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close(async () => { await app.locals.close(); process.exit(0); }));
 
 }
-
 

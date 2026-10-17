@@ -3,9 +3,8 @@ import { Modal } from './App.jsx';
 
 const money = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((value || 0) / 100);
 
-// Owner-only: flag an account as a demo, and import a cash-book CSV into it after a preview that
-// must reconcile to the sheet's running cash. Statements for demo accounts are stamped as samples.
-export default function DemoImport({ api, account, onChanged }) {
+// Owner-only upload for a customer's opening ledger, before the first ledger entry.
+export default function LedgerImport({ api, account, hasActivity, onChanged }) {
   const [open, setOpen] = useState(false);
   const [csv, setCsv] = useState('');
   const [name, setName] = useState('');
@@ -17,18 +16,17 @@ export default function DemoImport({ api, account, onChanged }) {
   const base = `/admin/accounts/${account.id}`;
 
   async function run(task) { setBusy(true); setError(''); setNotice(''); try { await task(); } catch (e) { setError(e.message); } finally { setBusy(false); } }
-  const toggle = () => run(async () => { await api(`${base}/demo`, { method: 'PUT', body: JSON.stringify({ demo: !account.demo }) }); onChanged(); });
   async function choose(e) { const file = e.target.files[0]; setPreview(null); setError(''); if (!file) return; setName(file.name); setCsv(await file.text()); }
   const check = () => run(async () => setPreview(await api(`${base}/import/preview`, { method: 'POST', body: JSON.stringify({ csv, year: year || undefined }) })));
   const post = () => run(async () => { const result = await api(`${base}/import`, { method: 'POST', body: JSON.stringify({ csv, year: year || undefined, fileHash: preview.fileHash }) }); setPreview(null); setCsv(''); setName(''); setOpen(false); setNotice(`Imported ${result.rows} entries. Closing balance ${money(result.closing)}.`); onChanged(); });
 
   return <section className="panel">
-    <div className="panel-heading"><h3>Demo account {account.demo ? <span className="role-badge">DEMO</span> : null}</h3><span className="eyebrow">OWNER ONLY</span></div>
-    <p className="fine-print">Demo accounts hold demonstration figures. Every statement PDF for a demo account is stamped "SAMPLE · NOT A BANK STATEMENT" on each page. An account that has received an import stays a demo account.</p>
+    <div className="panel-heading"><h3>Customer ledger upload</h3><span className="eyebrow">OWNER ONLY</span></div>
+    <p className="fine-print">Upload is available only before this account has any ledger entries. Customer-provided records are not independently verified by SVBT and do not represent funds available for transfer.</p>
     {error && !open && <div className="error" role="alert">{error}</div>}{notice && <div className="success" role="status">{notice}</div>}
-    <div className="toolbar"><button className="text-button" disabled={busy} onClick={toggle}>{account.demo ? 'Remove demo flag' : 'Mark as demo account'}</button>{account.demo ? <button className="button small" disabled={busy} onClick={() => { setOpen(true); setError(''); }}>Import cash-book CSV +</button> : null}</div>
+    <div className="toolbar">{hasActivity ? <span className="muted">This account already has ledger entries; uploads are only available on new accounts.</span> : <button className="button small" disabled={busy} onClick={() => { setOpen(true); setError(''); }}>Import customer ledger CSV +</button>}</div>
     {open && <Modal wide title="Import a cash-book CSV." onClose={() => !busy && setOpen(false)}>
-      <p>Columns: Date, Payee, Description, Category, In / (out), Running cash. "Month YYYY" headings set the year; the first section uses the first heading's year unless you choose one. Every row must match the sheet's running cash, starting from this account's current balance of the ledger.</p>
+      <p>Columns: Date, Payee, Description, Category, In / (out), Running cash. "Month YYYY" headings set the year; the first section uses the first heading's year unless you choose one. Every row must match the sheet's running cash, starting from zero. Uploads are accepted only before the account has any ledger activity.</p>
       <label>CSV file<input type="file" accept=".csv,text/csv" onChange={choose} disabled={busy} /></label>
       <label>Year for rows before the first heading (optional)<input type="number" min="1900" max="9999" value={year} onChange={e => { setYear(e.target.value); setPreview(null); }} disabled={busy} /></label>
       {error && <div className="error" role="alert">{error}</div>}

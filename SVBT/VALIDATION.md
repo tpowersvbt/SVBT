@@ -1,13 +1,10 @@
-# Validation — 2026-10-03
+# Validation
 
-- Vite production build: passed.
-- ESLint: passed.
-- Backend/PDF regression suite: 11 tests passed in the first run; one secure-cookie regression was corrected and its targeted rerun passed. All 12 test cases have passed.
-- Added regression coverage: first production-mode operations startup, configured moderator password, four monthly statement records, unknown sample-customer password, restart preserving passwords/statement hashes/transaction count, existing-customer reuse without duplicate email.
-- Existing browser suite: 3 passed (desktop/mobile public site, customer login/logout, moderator login, statement integrity and PDF download).
-- Visible copy scanned for demo/demonstration wording; remaining internal fixture identifiers are intentionally retained.
+- `npm test`: 41 tests passed, including first-ledger-only imports, imported-record transfer/reversal safeguards, legacy database migration, and startup without seeded customer records.
+- `npm run lint`: passed.
+- `npm run build`: passed.
+- `npm ci`: installed the locked dependencies with no reported vulnerabilities.
 
-Tests ran locally on Node 24.19.0. No Render deployment, live login, DNS verification,
-banking integration verification or compliance approval was performed. The final two
-sidebar/print copy changes were followed by a fresh build; browser interaction tests
-preceded those text-only changes.
+The package declares Node 26.x, but this environment ran Node 22.23.3; npm reported the engine mismatch. Re-run CI on the declared Node version before deployment. The browser UI suite was not run.
+
+No Render service, live database, persistent disk, DNS, or public site was accessed or changed. The application does not connect to core banking, payment settlement, or external bank rails. This validation is not a compliance or licensing approval.

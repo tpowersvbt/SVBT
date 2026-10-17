@@ -1,3 +1,3 @@
-# SVBT handoff
+# Start here
 
-See HANDOFF.md for the current moderator setup, sample statements, deployment steps and limitations.
+See [HANDOFF.md](HANDOFF.md) for staff setup, customer ledger uploads, Render configuration, and data-preservation requirements.

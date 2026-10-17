@@ -6,13 +6,15 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { createApp } from '../server/index.js';
 import { trivialPin } from '../server/transfers.js';
+import { seedTestLedger } from './fixtures.js';
 
 const origin = 'http://localhost:3000';
 const customer = ['sales@bakhtiariautogroup.com', 'FounderClient!2026'];
 const balance = (db, accountId) => db.prepare('SELECT COALESCE(SUM(amount),0) n FROM transactions WHERE accountId=?').get(accountId).n;
 
 async function start(directory, options = {}) {
-  const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), demoSeed: true, ...options });
+  const app = await createApp({ production: false, origin, frontend: false, dbPath: join(directory, 'bank.sqlite'), statementDir: join(directory, 'statements'), ...options });
+  if (!app.locals.db.prepare('SELECT 1 FROM users LIMIT 1').get()) await seedTestLedger(app.locals.db, app.locals.config.statementDir);
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -78,7 +80,7 @@ test('a transfer needs a PIN set with the password, and moves money as two linke
     const debit = f.db.prepare('SELECT * FROM transactions WHERE id=?').get(row.debitId), credit = f.db.prepare('SELECT * FROM transactions WHERE id=?').get(row.creditId);
     assert.equal(debit.amount, -123456); assert.equal(credit.amount, 123456);
     assert.equal(debit.date, new Date().toISOString().slice(0, 10));
-    assert.match(credit.description, /^Transfer from Bakhtiari Auto Group, LLC …\d{4}: Parts invoice 42$/);
+    assert.match(credit.description, /^Transfer from Example Customer, LLC …\d{4}: Parts invoice 42$/);
     assert.ok(f.db.prepare("SELECT id FROM audit WHERE action='transfer.post'").get());
     assert.throws(() => f.db.prepare('UPDATE transfers SET amount=1').run(), /Immutable transfers/);
     assert.throws(() => f.db.prepare('DELETE FROM transfers').run(), /Immutable transfers/);
