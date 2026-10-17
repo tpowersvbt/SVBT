@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDatabase, seedDemo, demoCredentials, hashPassword, verifyPassword, atomic, audit, newAccount } from './db.js';
-import { getSettings, saveSettings, listEmployees, saveEmployee, removeEmployee } from './site.js';
+import { getSettings, saveSettings, listTeamMembers, saveTeamMember, removeTeamMember } from './site.js';
 import { digest, fail, text, accountData, postTransaction, postTransactionsBulk, reverseTransaction, preview, archive, statement, integrity, issueStatement, saveInvestment } from './services.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,17 +44,16 @@ export async function createApp(options = {}) {
   const config = configuration(options);
   let dbPath = config.dbPath;
   
-  // Force fresh database on first startup
   const fs = await import('fs');
   const freshStart = !fs.existsSync(dbPath);
-  if (freshStart) {
-    console.log('Fresh database - will provision demo accounts on startup');
-  }
+  if (freshStart) console.log(config.demoSeed ? 'Fresh database - demonstration seeding is enabled.' : 'Fresh database - demonstration seeding is disabled.');
   
   const db = openDatabase(dbPath);
   let vite;
   try {
-    // Always provision demo accounts (whether DEMO_SEED is on or off) - works in production
+    getSettings(db);
+    listTeamMembers(db);
+    // Demo accounts are created only when explicitly enabled.
     if (config.demoSeed) { const [modEmail, modPassword] = demoCredentials.moderator;
     const [custEmail, custPassword] = demoCredentials.customer;
     
@@ -167,7 +166,8 @@ export async function createApp(options = {}) {
     });
     const auth = (req, res, next) => req.user ? next() : next(Object.assign(new Error('Sign in to access this resource.'), { status: 401 }));
     const moderator = (req, res, next) => !req.user ? next(Object.assign(new Error('Sign in to access operations.'), { status: 401 })) : req.user.role === 'moderator' ? next() : next(Object.assign(new Error('Moderator permission is required.'), { status: 403 }));
-    app.get('/api/site', (req, res) => res.json({ settings: getSettings(db), employees: listEmployees(db) }));
+    app.get('/api/site', (req, res) => res.json({ settings: getSettings(db), employees: listTeamMembers(db) }));
+    app.get('/api/team', (req, res) => res.json(listTeamMembers(db)));
     app.get('/api/session', (req, res) => res.json({ user: publicUser(req.user), csrfToken: req.session?.csrfToken || makeSession(req, res, null) }));
     const attempts = new Map();
     const limiter = (req, res, next) => {
@@ -239,12 +239,18 @@ export async function createApp(options = {}) {
     app.get('/api/admin/investments', (req, res) => res.json(db.prepare('SELECT * FROM investments ORDER BY id').all()));
     app.post('/api/admin/investments', (req, res) => res.status(201).json(saveInvestment(db, null, req.body, req.user.id)));
     app.put('/api/admin/investments/:id', (req, res) => res.json(saveInvestment(db, identifier(req.params.id), req.body, req.user.id)));
+    app.get('/api/admin/site', (req, res) => res.json(getSettings(db)));
+    app.put('/api/admin/site', (req, res) => res.json(saveSettings(db, req.body, req.user.id)));
+    app.get('/api/admin/team', (req, res) => res.json(listTeamMembers(db)));
+    app.post('/api/admin/team', (req, res) => res.status(201).json(saveTeamMember(db, null, req.body, req.user.id)));
+    app.put('/api/admin/team/:id', (req, res) => res.json(saveTeamMember(db, identifier(req.params.id), req.body, req.user.id)));
+    app.delete('/api/admin/team/:id', (req, res) => { removeTeamMember(db, identifier(req.params.id), req.user.id); res.json({ ok: true }); });
     app.get('/api/admin/settings', (req, res) => res.json(getSettings(db)));
     app.put('/api/admin/settings', (req, res) => res.json(saveSettings(db, req.body, req.user.id)));
-    app.get('/api/admin/employees', (req, res) => res.json(listEmployees(db)));
-    app.post('/api/admin/employees', (req, res) => res.status(201).json(saveEmployee(db, null, req.body, req.user.id)));
-    app.put('/api/admin/employees/:id', (req, res) => res.json(saveEmployee(db, identifier(req.params.id), req.body, req.user.id)));
-    app.delete('/api/admin/employees/:id', (req, res) => { removeEmployee(db, identifier(req.params.id), req.user.id); res.json({ ok: true }); });
+    app.get('/api/admin/employees', (req, res) => res.json(listTeamMembers(db)));
+    app.post('/api/admin/employees', (req, res) => res.status(201).json(saveTeamMember(db, null, req.body, req.user.id)));
+    app.put('/api/admin/employees/:id', (req, res) => res.json(saveTeamMember(db, identifier(req.params.id), req.body, req.user.id)));
+    app.delete('/api/admin/employees/:id', (req, res) => { removeTeamMember(db, identifier(req.params.id), req.user.id); res.json({ ok: true }); });
     app.get('/api/admin/audit', (req, res) => res.json(db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT 1000').all().map(row => ({ ...row, details: JSON.parse(row.details) }))));
     app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
     if (config.frontend && config.dev) {

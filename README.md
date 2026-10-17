@@ -58,6 +58,8 @@ Customers can view their own balance, transaction-derived chart, search/month-fi
 
 Moderators select customer accounts, post positive credits or negative debits, and reverse mistakes with an opposite-signed new ledger entry. Original entries cannot be edited or deleted. Investment records can be created/edited with sector, status, target capital, risk and strategy; these records are not public.
 
+The moderator Transactions tab includes a Funds Flow CSV paste form for 1–2000 rows. Use `date,description,amount` columns, quote fields containing commas, and enter amounts in dollars; all rows are validated and posted atomically. Site Settings controls the banner, footer, and hero text and images. Team management supports adding, editing and removing public team members.
+
 In Statements, choose a month, calculate the live preview, then issue a revision. Download its PDF from the archive and run its integrity check. PDFs contain statement dates, account identity, opening/closing amounts, deposits/debits, transaction running balances, revision and page numbers. Statements and statement APIs are moderator-only, as required by the surviving specification.
 
 Backdated transactions change the affected month AND later months' live opening balances. Issue replacement revisions for EVERY affected month. Earlier issued revisions remain immutable; no role can rewrite an issued document, including Tim. This resolves the source's editing language in favor of its immutable-ledger/revision requirement. Audit records capture operations. Integrity checks compare snapshot hashes, stored PDF bytes and filesystem archive bytes; they are not a substitute for independently secured backups.
@@ -110,7 +112,8 @@ SVBT/
   .env.example
   .gitignore
   README.md
-  SOURCE.txt
+  render.yaml
+  .github/workflows/ci.yml
   package.json
   package-lock.json
   index.html
@@ -125,7 +128,9 @@ SVBT/
   src/styles.css
   server/index.js
   server/db.js
+  server/site.js
   server/services.js
+  server/funds-parse.js
   server/pdf.js
   server/seed.js
   server/create-moderator.js
@@ -139,7 +144,7 @@ SVBT/
   dist/ (created at build)
 ```
 
-SOURCE.txt provides the full contents of every project text file, including the dependency lockfile; the portrait is encoded with a base64 prefix. SVBT-complete.zip contains the complete files, bundled build and demonstration statements. No node_modules, private .env, database, original attachments or temporary tooling are included. Run npm ci after extraction. Source and archive can be regenerated with node scripts/package.js.
+The deploy configuration and guides are included. No node_modules, private .env, database, original attachments or temporary tooling are included. Run `npm ci` after extraction, then use the commands above to build and start the app.
 
 ## Design verification
 

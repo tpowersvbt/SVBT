@@ -42,6 +42,8 @@ export function openDatabase(path) {
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, actorId INTEGER REFERENCES users(id), action TEXT NOT NULL, entity TEXT NOT NULL, details TEXT NOT NULL, createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
     CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS employees(id INTEGER PRIMARY KEY, name TEXT NOT NULL, title TEXT NOT NULL, photoUrl TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL, displayOrder INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS site_settings(id INTEGER PRIMARY KEY CHECK(id=1), bannerText TEXT NOT NULL, bannerImage TEXT NOT NULL DEFAULT '', footerText TEXT NOT NULL, footerImage TEXT NOT NULL DEFAULT '', heroTitle TEXT NOT NULL, heroSubtitle TEXT NOT NULL, heroImage TEXT NOT NULL DEFAULT '/svbt-facade.jpg');
+    CREATE TABLE IF NOT EXISTS team_members(id INTEGER PRIMARY KEY, name TEXT NOT NULL, title TEXT NOT NULL, photoUrl TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL, displayOrder INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TRIGGER IF NOT EXISTS valid_reversal BEFORE INSERT ON transactions WHEN NEW.reversalOf IS NOT NULL BEGIN
       SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM transactions WHERE id=NEW.reversalOf AND accountId=NEW.accountId AND amount=-NEW.amount AND reversalOf IS NULL AND date<=NEW.date) THEN RAISE(ABORT,'Invalid reversal') END;
