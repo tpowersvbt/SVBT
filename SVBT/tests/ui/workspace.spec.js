@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('moderator publishes projects and reviews biography without exposing private drafts', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Moderator login', exact: true }).click();
+  await page.getByRole('button', { name: 'Staff login', exact: true }).click();
   await page.getByLabel('Email', { exact: true }).fill('tpower@siliconvalleybankandtrust.com');
   await page.getByLabel('Password', { exact: true }).fill('ModeratorGod!2026');
   await page.getByRole('button', { name: /Sign in securely/ }).click();
@@ -71,14 +71,14 @@ test('customer signs in with Secure localhost cookies, reads exact balance and l
   await expect(page.getByRole('heading', { name: '$31,230.00', exact: true })).toBeVisible();
   await page.getByRole('button', { name: /^Transactions/ }).click();
   await page.getByRole('combobox').selectOption('2026-06');
-  await expect(page.getByRole('cell', { name: 'Opening deposit' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Initial deposit' })).toBeVisible();
   await page.getByRole('button', { name: /Log out/ }).click();
   await expect(page.getByRole('heading', { name: /Built for what/ })).toBeVisible();
 });
 
 test('moderator calculates preview, verifies archive and downloads an issued PDF', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: /Moderator access/ }).click();
+  await page.getByRole('button', { name: 'Staff access', exact: true }).click();
   await page.getByLabel('Email', { exact: true }).fill('tpower@siliconvalleybankandtrust.com');
   await page.getByLabel('Password', { exact: true }).fill('ModeratorGod!2026');
   await page.getByRole('button', { name: /Sign in securely/ }).click();
@@ -96,4 +96,3 @@ test('moderator calculates preview, verifies archive and downloads an issued PDF
   await expect(page.getByRole('heading', { name: 'Restricted investment records' })).toBeVisible();
   await expect(page.locator('.investment-card')).toHaveCount(3);
 });
-
