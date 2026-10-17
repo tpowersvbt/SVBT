@@ -1,7 +1,7 @@
 # Render Blueprint for Silicon Valley Bank and Trust (livesvbt)
 services:
   - type: web
-    name: svbt
+    name: livesvbt
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
@@ -10,10 +10,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 3000
       - key: DEMO_SEED
         value: "false"
-      - key: HOST
-        value: "0.0.0.0"
       - key: MODERATOR_EMAIL
         sync: false
       - key: MODERATOR_PASSWORD
