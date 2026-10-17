@@ -9,7 +9,8 @@ const dollars = value => new Intl.NumberFormat('en-US', { style: 'currency', cur
 function parseLine(line) {
   if (line.length > maxLineLength) fail(413, 'A CSV row is larger than 4 KB.');
   const cells = []; let cell = '', quoted = false;
-  for (let i = 0; i < line.length; i++) {
+  const length = Math.min(line.length, maxLineLength);
+  for (let i = 0; i < length; i++) {
     const c = line[i];
     if (quoted) { if (c === '"' && line[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') quoted = false; else cell += c; }
     else if (c === '"') quoted = true;
