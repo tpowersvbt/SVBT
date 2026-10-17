@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, readFileSync, renameSync, unlinkSync } from '
 import { join } from 'node:path';
 import { atomic, audit } from './db.js';
 import { renderStatement } from './pdf.js';
+import { parseFundsFlow } from './funds-parse.js';
 
 export const digest = value => createHash('sha256').update(value).digest('hex');
 export function fail(status, message) { const error = new Error(message); error.status = status; throw error; }
@@ -60,7 +61,36 @@ export function postTransaction(db, id, values, actorId) {
     return db.prepare('SELECT * FROM transactions WHERE id=?').get(transactionId);
   });
 }
-export function postTransactionsBulk(db, id, values, actorId) {   account(db, id);   const entries = values.entries;   if (!Array.isArray(entries) || entries.length < 1 || entries.length > 2000) fail(400, 'Provide an entries array with 1-2000 rows.');   const rows = entries.map(entry => ({ date: date(entry.date), description: text(entry.description, 'Description', 300), amount: cents(entry.amount) }));   return atomic(db, () => {     const ids = [];     const insert = db.prepare('INSERT INTO transactions(accountId,date,description,amount,actorId) VALUES (?,?,?,?,?)');     for (const row of rows) ids.push(Number(insert.run(id, row.date, row.description, row.amount, actorId).lastInsertRowid));     accountData(db, id);     audit(db, actorId, 'transaction.bulkPost', ids[0], { accountId: id, count: ids.length });     return db.prepare(`SELECT * FROM transactions WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);   }); } export function reverseTransaction(db, id, values, actorId) {
+export function postTransactionsBulk(db, id, values, actorId) {
+  account(db, id);
+  let source = [];
+  const errors = [];
+  if (typeof values.rows === 'string') {
+    const parsed = parseFundsFlow(values.rows);
+    source = parsed.entries; errors.push(...parsed.errors);
+  } else if (Array.isArray(values.entries)) source = values.entries.map((entry, index) => ({ row: index + 1, ...entry }));
+  else fail(400, 'Provide pasted rows or an entries array.');
+  if (!source.length && !errors.length) fail(400, 'Provide 1-2000 rows.');
+  if (source.length + errors.length > 2000) fail(400, 'Provide 1-2000 rows.');
+  const rows = [];
+  for (const entry of source) {
+    try { rows.push({ date: date(entry.date), description: text(entry.description, 'Description', 300), amount: cents(entry.amount) }); } catch (error) { if (!error.status) throw error; errors.push({ row: entry.row, message: error.message }); }
+  }
+  if (errors.length) {
+    errors.sort((a, b) => a.row - b.row);
+    const error = new Error(`${errors.length} row${errors.length === 1 ? '' : 's'} could not be validated. No transactions were posted.`);
+    error.status = 400; error.rowErrors = errors; throw error;
+  }
+  return atomic(db, () => {
+    const ids = [];
+    const insert = db.prepare('INSERT INTO transactions(accountId,date,description,amount,actorId) VALUES (?,?,?,?,?)');
+    for (const row of rows) ids.push(Number(insert.run(id, row.date, row.description, row.amount, actorId).lastInsertRowid));
+    accountData(db, id);
+    audit(db, actorId, 'transaction.bulkPost', ids[0], { accountId: id, count: ids.length, ids, total: rows.reduce((sum, row) => sum + row.amount, 0) });
+    return db.prepare(`SELECT * FROM transactions WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY id`).all(...ids);
+  });
+}
+export function reverseTransaction(db, id, values, actorId) {
   const ledgerDate = date(values.date), reason = text(values.reason, 'Reversal reason', 250);
   return atomic(db, () => {
     const original = db.prepare('SELECT * FROM transactions WHERE id=?').get(id);
@@ -120,5 +150,39 @@ export function saveInvestment(db, id, values, actorId) {
     const result = db.prepare('SELECT * FROM investments WHERE id=?').get(id);
     audit(db, actorId, 'investment.save', id, result);
     return result;
+  });
+}
+export function getSite(db) { return db.prepare('SELECT headerBanner,footerText,heroTitle,heroSubtitle,updatedAt FROM site_settings WHERE id=1').get(); }
+export function saveSite(db, values, actorId) {
+  const data = [text(values.headerBanner, 'Header banner text', 200), text(values.footerText, 'Footer text', 300), text(values.heroTitle, 'Hero title', 120), text(values.heroSubtitle, 'Hero subtitle', 400)];
+  return atomic(db, () => {
+    db.prepare("UPDATE site_settings SET headerBanner=?,footerText=?,heroTitle=?,heroSubtitle=?,updatedAt=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1").run(...data);
+    const result = getSite(db);
+    audit(db, actorId, 'site.update', 1, { headerBanner: data[0], footerText: data[1], heroTitle: data[2], heroSubtitle: data[3] });
+    return result;
+  });
+}
+export function listTeam(db) { return db.prepare('SELECT id,name,title,photoUrl,bio FROM team_members ORDER BY id').all(); }
+function optional(value, name, max) { return value === undefined || value === null || value === '' ? null : text(value, name, max); }
+function photo(value) {
+  const url = optional(value, 'Photo URL', 500);
+  if (url !== null && !/^(\/(?!\/)[^\s\\]*|https:\/\/[^\s\\]+)$/.test(url)) fail(400, 'Photo URL must be a site-relative path or an https URL.');
+  return url;
+}
+export function addTeamMember(db, values, actorId) {
+  const member = { name: text(values.name, 'Name', 120), title: text(values.title, 'Title', 120), photoUrl: photo(values.photoUrl), bio: optional(values.bio, 'Bio', 1000) };
+  return atomic(db, () => {
+    const id = Number(db.prepare('INSERT INTO team_members(name,title,photoUrl,bio) VALUES (?,?,?,?)').run(member.name, member.title, member.photoUrl, member.bio).lastInsertRowid);
+    audit(db, actorId, 'team.add', id, member);
+    return { id, ...member };
+  });
+}
+export function removeTeamMember(db, id, actorId) {
+  return atomic(db, () => {
+    const member = db.prepare('SELECT id,name,title FROM team_members WHERE id=?').get(id);
+    if (!member) fail(404, 'Team member not found.');
+    db.prepare('DELETE FROM team_members WHERE id=?').run(id);
+    audit(db, actorId, 'team.remove', id, { name: member.name, title: member.title });
+    return { removed: id };
   });
 }
