@@ -69,7 +69,9 @@ export default function Portal({ user, api, onLogout, onUser }) {
     e.preventDefault(); const form = e.currentTarget; const values = Object.fromEntries(new FormData(form));
     await perform(async () => { if (edit.type === 'reverse') await api(`/admin/transactions/${edit.item.id}/reverse`, { method: 'POST', body: JSON.stringify(values) }); else { values.amount = cents(values.amount); await api(`${base}/transactions`, { method: 'POST', body: JSON.stringify(values) }); } setEdit(null); setRefresh(r => r + 1); }, 'Ledger updated. Live previews have changed; existing issued revisions remain unchanged.');
   }
-  async function saveInvestment(e) {
+  async function bulkUpload(e) { e.preventDefault(); const form = e.currentTarget; const entries = form.elements.rows.value.split(/
+?
+/).map(l => l.trim()).filter(Boolean).map(line => { const [date, description, amount] = line.split(',').map(s => s.trim()); return { date, description, amount }; }); await perform(async () => { await api(`${base}/transactions/bulk`, { method: 'POST', body: JSON.stringify({ entries }) }); setRefresh(r => r + 1); }, `Uploaded ${entries.length} ledger entries.`); form.reset(); } async function saveInvestment(e) {
     e.preventDefault(); const values = Object.fromEntries(new FormData(e.currentTarget));
     await perform(async () => { values.targetCapital = cents(values.targetCapital); await api(`/admin/investments${edit.item?.id ? `/${edit.item.id}` : ''}`, { method: edit.item?.id ? 'PUT' : 'POST', body: JSON.stringify(values) }); setEdit(null); setRefresh(r => r + 1); }, 'Investment record saved.');
   }
