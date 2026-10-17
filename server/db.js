@@ -56,8 +56,8 @@ export async function seedDemo(db) {
   const moderatorHash = await hashPassword(demoCredentials.moderator[1]);
   atomic(db, () => {
     if (db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) return;
-    const customer = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(demoCredentials.customer[0], 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117', 'customer', customerHash).lastInsertRowid);
-    const moderator = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(demoCredentials.moderator[0], 'Timothy Powers', 'Silicon Valley, California', 'moderator', moderatorHash).lastInsertRowid);
+    const existingCustomer = db.prepare('SELECT id FROM users WHERE email=?').get(demoCredentials.customer[0]); const customer = existingCustomer ? existingCustomer.id : Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(demoCredentials.customer[0], 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117', 'customer', customerHash).lastInsertRowid);
+    const existingModerator = db.prepare('SELECT id FROM users WHERE email=?').get(demoCredentials.moderator[0]); const moderator = existingModerator ? existingModerator.id : Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(demoCredentials.moderator[0], 'Timothy Powers', 'Silicon Valley, California', 'moderator', moderatorHash).lastInsertRowid);
     const accountId = newAccount(db, customer, 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117');
     const descriptions = ['Cloud infrastructure', 'Software subscriptions', 'Office rent', 'Internet and communications', 'Business insurance', 'Accounting services', 'Digital marketing', 'Contract engineering', 'Office supplies', 'Security monitoring', 'Technology hardware', 'Business travel'];
     const base = [65000, 32000, 180000, 18000, 28000, 45000, 50000, 60000, 12000, 22000, 35000, 29700];
