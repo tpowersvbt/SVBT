@@ -21,7 +21,3 @@ services:
         value: true
       - key: DEMO_SEED
         value: false
-      - key: DEMO_MODERATOR_EMAIL
-        value: tpower@siliconvalleybankandtrust.com
-      - key: DEMO_MODERATOR_PASSWORD
-        value: svbt2026!

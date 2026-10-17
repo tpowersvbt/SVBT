@@ -53,7 +53,8 @@ export async function createApp(options = {}) {
   const db = openDatabase(dbPath);
   let vite;
   try {
-    // Always provision demo accounts (whether DEMO_SEED is on or off) - works in production
+    // Demo accounts use published passwords, so they are only provisioned when demo seeding is on (never in production)
+    if (config.demoSeed) {
     const [modEmail, modPassword] = demoCredentials.moderator;
     const [custEmail, custPassword] = demoCredentials.customer;
     
@@ -93,6 +94,7 @@ export async function createApp(options = {}) {
       }
       console.log('✓ Demo data seeded successfully');
     }
+    }
     const dummyHash = await hashPassword(randomBytes(32).toString('hex'));
     const app = express();
     app.disable('x-powered-by');
@@ -106,28 +108,17 @@ export async function createApp(options = {}) {
       res.set('Cache-Control', 'no-store');
       const requestOrigin = req.get('origin');
       
-      // Allow configured origin, Render preview URLs, and localhost
-      const allowedOriginPatterns = [
+      // Exact origins only: the configured origin and the bank's domain, plus localhost outside production
+      const allowedOrigins = [
         config.origin,
-        'http://localhost:3000',
-        'http://localhost:3005',
-        /^https:\/\/svbt-[a-z0-9]+\.onrender\.com$/,
-        'https://siliconvalleybankandtrust.com'
+        'https://siliconvalleybankandtrust.com',
+        ...(config.production ? [] : ['http://localhost:3000', 'http://localhost:3005'])
       ];
       
-      const isOriginAllowed = (origin) => {
-        if (!origin) return true;
-        return allowedOriginPatterns.some(pattern => {
-          if (typeof pattern === 'string') return origin === pattern;
-          if (pattern instanceof RegExp) return pattern.test(origin);
-          return false;
-        });
-      };
-      
-      if (requestOrigin && !isOriginAllowed(requestOrigin)) {
+      if (requestOrigin && !allowedOrigins.includes(requestOrigin)) {
         return next(Object.assign(new Error('Request origin is not allowed.'), { status: 403 }));
       }
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && requestOrigin && !isOriginAllowed(requestOrigin)) {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !allowedOrigins.includes(requestOrigin)) {
         return next(Object.assign(new Error('An exact matching Origin is required for write requests.'), { status: 403 }));
       }
       if (req.get('sec-fetch-site') === 'cross-site') return next(Object.assign(new Error('Cross-site requests are forbidden.'), { status: 403 }));
