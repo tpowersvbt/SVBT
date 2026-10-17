@@ -1,0 +1,15 @@
+node_modules/
+dist/
+data/
+newdata/
+monthly/
+.env
+.tools/
+.abacusai/
+SVBT-complete.zip
+svbt-deployment.tar.gz
+test-results/
+playwright-report/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
