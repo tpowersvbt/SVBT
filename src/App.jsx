@@ -9,13 +9,13 @@ export const sectors = [
   { key: 'homes', title: 'New home builders', tag: '04 / BUILDING TOMORROW', short: 'From open land to new beginnings.', text: 'Follow development from land acquisition through construction and delivery. A thoughtful approach connects budgets, draw schedules, approvals and the realities of local housing demand.', points: ['Land and construction planning', 'Project budgets and draw schedules', 'Commercial construction opportunities'], risk: 'Permitting delays, construction overruns and changing demand can put development capital at risk.' }
 ];
 
-export const PHONE_DISPLAY = '(844) 824-SVBT';
-export const PHONE_HREF = 'tel:+18448247828';
+export const PHONE_DISPLAY = '(844) 842-SVBT';
+export const PHONE_HREF = 'tel:+18448427828';
 export const siteDefaults = { bannerText: 'Independent local demonstration. Not a live bank.', bannerImage: '', footerText: 'A perspective for the next economy.', heroTitle: 'Built for what comes next.', heroSubtitle: 'Ambitious ideas deserve a thoughtful financial foundation. Explore a banking experience shaped around the people building tomorrow.' };
 
 function Logo() {
   const [failed, setFailed] = useState(false);
-  return <span className="brand-mark">{failed ? 'SVBT' : <img className="brand-logo" src="/svbt-logo.png" alt="SVBT" onError={() => setFailed(true)} />}<span className="brand-slash" /></span>;
+  return <span className="brand-mark">{failed ? 'SVBT' : <img className="brand-logo" src="/svbt-logo.jpg" alt="SVBT" onError={() => setFailed(true)} />}<span className="brand-slash" /></span>;
 }
 function Phone({ className = '' }) { return <a className={`phone-link ${className}`} href={PHONE_HREF}>{PHONE_DISPLAY}</a>; }
 function Photo({ src, name }) {
