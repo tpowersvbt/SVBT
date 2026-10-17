@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDatabase, seedDemo, demoCredentials, hashPassword, verifyPassword, atomic, audit, newAccount } from './db.js';
-import { digest, fail, text, accountData, postTransaction, postTransactionsBulk, reverseTransaction, preview, archive, statement, integrity, issueStatement, saveInvestment } from './services.js';
+import { digest, fail, text, accountData, postTransaction, postTransactionsBulk, reverseTransaction, preview, archive, statement, integrity, issueStatement, saveInvestment, getSite, saveSite, listTeam, addTeamMember, removeTeamMember } from './services.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let authenticationActive = 0;
@@ -216,7 +216,12 @@ export async function createApp(options = {}) {
       if (!row) fail(404, 'No customer account is associated with this user.');
       res.json(accountData(db, row.id));
     });
+    app.get('/api/site', (req, res) => res.json(getSite(db)));
+    app.get('/api/team', (req, res) => res.json(listTeam(db)));
     app.use('/api/admin', moderator);
+    app.put('/api/admin/site', (req, res) => res.json(saveSite(db, req.body, req.user.id)));
+    app.post('/api/admin/team', (req, res) => res.status(201).json(addTeamMember(db, req.body, req.user.id)));
+    app.delete('/api/admin/team/:id', (req, res) => res.json(removeTeamMember(db, identifier(req.params.id), req.user.id)));
     app.get('/api/admin/accounts', (req, res) => res.json(db.prepare('SELECT * FROM accounts ORDER BY id').all()));
     app.get('/api/admin/accounts/:id', (req, res) => res.json(accountData(db, identifier(req.params.id))));
     app.post('/api/admin/accounts/:id/transactions', (req, res) => res.status(201).json(postTransaction(db, identifier(req.params.id), req.body, req.user.id))); app.post('/api/admin/accounts/:id/transactions/bulk', (req, res) => res.status(201).json(postTransactionsBulk(db, identifier(req.params.id), req.body, req.user.id)));
@@ -247,7 +252,7 @@ export async function createApp(options = {}) {
       if (res.headersSent) return next(error);
       const status = error.status || (error.type === 'entity.too.large' ? 413 : 500);
       if (status >= 500) console.error(error);
-      res.status(status).json({ error: status >= 500 ? 'The operation could not be completed. Please try again.' : error.type === 'entity.parse.failed' ? 'Malformed JSON request.' : error.message });
+      res.status(status).json({ error: status >= 500 ? 'The operation could not be completed. Please try again.' : error.type === 'entity.parse.failed' ? 'Malformed JSON request.' : error.message, ...(status < 500 && error.rowErrors ? { rowErrors: error.rowErrors } : {}) });
     });
     const close = async () => { if (vite) await vite.close(); db.close(); };
     app.locals.db = db; app.locals.config = config; app.locals.close = close;

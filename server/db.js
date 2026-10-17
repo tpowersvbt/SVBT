@@ -6,6 +6,7 @@ import { dirname } from 'node:path';
 
 const derive = promisify(scrypt);
 export const demoCredentials = { customer: [process.env.DEMO_CUSTOMER_EMAIL || 'sales@bakhtiariautogroup.com', process.env.DEMO_CUSTOMER_PASSWORD || 'FounderClient!2026'], moderator: [process.env.DEMO_MODERATOR_EMAIL || 'tpower@siliconvalleybankandtrust.com', process.env.DEMO_MODERATOR_PASSWORD || 'ModeratorGod!2026'] };
+export const defaultSite = { headerBanner: 'INDEPENDENT LOCAL DEMONSTRATION', footerText: 'A perspective for the next economy.', heroTitle: 'Built for what comes next.', heroSubtitle: 'Ambitious ideas deserve a thoughtful financial foundation. Explore a banking experience shaped around the people building tomorrow.' };
 export async function hashPassword(password) {
   const salt = randomBytes(32).toString('hex');
   const hash = await derive(password, salt, 64, { N: 131072, r: 8, p: 1, maxmem: 256 * 1024 * 1024 });
@@ -41,12 +42,21 @@ export function openDatabase(path) {
     CREATE TABLE IF NOT EXISTS investments(id INTEGER PRIMARY KEY, sector TEXT NOT NULL, status TEXT NOT NULL, targetCapital INTEGER NOT NULL CHECK(typeof(targetCapital)='integer' AND targetCapital>=0 AND targetCapital<=100000000000), risk TEXT NOT NULL, strategy TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, actorId INTEGER REFERENCES users(id), action TEXT NOT NULL, entity TEXT NOT NULL, details TEXT NOT NULL, createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
     CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS site_settings(id INTEGER PRIMARY KEY CHECK(id=1), headerBanner TEXT NOT NULL, footerText TEXT NOT NULL, heroTitle TEXT NOT NULL, heroSubtitle TEXT NOT NULL, updatedAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+    CREATE TABLE IF NOT EXISTS team_members(id INTEGER PRIMARY KEY, name TEXT NOT NULL, title TEXT NOT NULL, photoUrl TEXT, bio TEXT, createdAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
     CREATE TRIGGER IF NOT EXISTS valid_reversal BEFORE INSERT ON transactions WHEN NEW.reversalOf IS NOT NULL BEGIN
       SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM transactions WHERE id=NEW.reversalOf AND accountId=NEW.accountId AND amount=-NEW.amount AND reversalOf IS NULL AND date<=NEW.date) THEN RAISE(ABORT,'Invalid reversal') END;
     END;
   `);
   for (const table of ['transactions', 'statements', 'audit']) {
     for (const operation of ['UPDATE', 'DELETE']) db.exec(`CREATE TRIGGER IF NOT EXISTS immutable_${table}_${operation.toLowerCase()} BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT,'Immutable ${table}'); END;`);
+  }
+  db.prepare('INSERT OR IGNORE INTO site_settings(id,headerBanner,footerText,heroTitle,heroSubtitle) VALUES (1,?,?,?,?)').run(...Object.values(defaultSite));
+  if (!db.prepare("SELECT value FROM metadata WHERE key='team-seeded'").get()) {
+    atomic(db, () => {
+      if (!db.prepare('SELECT id FROM team_members LIMIT 1').get()) db.prepare('INSERT INTO team_members(name,title,photoUrl,bio) VALUES (?,?,?,?)').run('Timothy Powers', 'President', '/tim-power.jpg', 'Alamo-based real estate and banking professional with more than twenty years of industry experience.');
+      db.prepare("INSERT INTO metadata(key,value) VALUES ('team-seeded','1')").run();
+    });
   }
   return db;
 }
