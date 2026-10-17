@@ -16,9 +16,11 @@ export function parseAmount(value) {
 // Pasted rows: date, description, amount. Positive amounts are credits, negative or (parenthesised) amounts are debits.
 export function parseFundsFlow(input) {
   const entries = [], errors = [];
-  String(input ?? '').split(/\r?\n/).forEach((line, index) => {
+  String(input ?? '').split(/\r?\n/, 2001).forEach((line, index) => {
     if (!line.trim()) return;
-    const row = index + 1, match = rowPattern.exec(line.trim());
+    const row = index + 1;
+    if (line.length > 500) { errors.push({ row, message: 'Row is too long.' }); return; }
+    const match = rowPattern.exec(line.trim());
     if (!match) { errors.push({ row, message: 'Expected "date, description, amount".' }); return; }
     const amount = parseAmount(match[3]);
     if (amount === null) { errors.push({ row, message: 'Amount must be a USD value with at most two decimals.' }); return; }

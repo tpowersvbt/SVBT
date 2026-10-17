@@ -26,7 +26,7 @@ function FundsFlow({ api, base, onPosted }) {
       setRows(''); setState({ busy: false, error: '', rowErrors: [], notice: `Posted ${posted.length} ledger entries.` }); onPosted();
     } catch (err) { setState({ busy: false, error: err.message, rowErrors: err.rowErrors || [], notice: '' }); }
   }
-  const problems = [...parsed.errors.map(x => ({ ...x, message: x.message })), ...state.rowErrors.filter(x => !parsed.errors.some(p => p.row === x.row))];
+  const problems = [...parsed.errors, ...state.rowErrors.filter(x => !parsed.errors.some(p => p.row === x.row))];
   return <section className="panel"><h3>Funds Flow</h3><p className="fine-print">Paste one row per line: date (YYYY-MM-DD), description, amount. Positive amounts are credits; negative or (parenthesised) amounts are debits. All rows post together or not at all.</p><form onSubmit={submit}><label>Rows<textarea rows={6} value={rows} onChange={e => setRows(e.target.value)} placeholder={'2026-10-01, Wire in, 1500.00\n2026-10-02, Office rent, -1800.00'} /></label>{rows.trim() && <p className="muted">Preview: {parsed.entries.length} valid row(s), {parsed.errors.length} invalid. {parsed.entries.length > 0 && <>Net {money(parsed.entries.reduce((sum, r) => sum + r.amount, 0))}.</>}</p>}{problems.length > 0 && <ul className="error" role="alert">{problems.map(x => <li key={`${x.row}-${x.message}`}>Row {x.row}: {x.message}</li>)}</ul>}{state.error && <div className="error" role="alert">{state.error}</div>}{state.notice && <div className="notice" role="status">{state.notice}</div>}<button className="button small" disabled={state.busy || !rows.trim() || parsed.errors.length > 0}>{state.busy ? 'Posting…' : 'Post funds flow'}</button></form></section>;
 }
 function SiteSettings({ api, onSiteChange }) {
