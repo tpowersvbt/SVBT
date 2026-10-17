@@ -60,7 +60,7 @@ export function postTransaction(db, id, values, actorId) {
     return db.prepare('SELECT * FROM transactions WHERE id=?').get(transactionId);
   });
 }
-export function reverseTransaction(db, id, values, actorId) {
+export function postTransactionsBulk(db, id, values, actorId) {   account(db, id);   const entries = values.entries;   if (!Array.isArray(entries) || entries.length < 1 || entries.length > 2000) fail(400, 'Provide an entries array with 1-2000 rows.');   const rows = entries.map(entry => ({ date: date(entry.date), description: text(entry.description, 'Description', 300), amount: cents(entry.amount) }));   return atomic(db, () => {     const ids = [];     const insert = db.prepare('INSERT INTO transactions(accountId,date,description,amount,actorId) VALUES (?,?,?,?,?)');     for (const row of rows) ids.push(Number(insert.run(id, row.date, row.description, row.amount, actorId).lastInsertRowid));     accountData(db, id);     audit(db, actorId, 'transaction.bulkPost', ids[0], { accountId: id, count: ids.length });     return db.prepare(`SELECT * FROM transactions WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);   }); } export function reverseTransaction(db, id, values, actorId) {
   const ledgerDate = date(values.date), reason = text(values.reason, 'Reversal reason', 250);
   return atomic(db, () => {
     const original = db.prepare('SELECT * FROM transactions WHERE id=?').get(id);
