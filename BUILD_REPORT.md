@@ -130,7 +130,7 @@ Before deploying to production:
 - [ ] Update APP_ORIGIN to your domain
 - [ ] Configure TRUST_PROXY if using reverse proxy
 - [ ] Review and approve banking licensing text
-- [ ] Complete information page
+- [ ] Complete FDIC and regulatory information
 - [ ] Implement MFA (multi-factor authentication)
 - [ ] Set up backups and disaster recovery
 - [ ] Conduct security penetration testing
@@ -193,7 +193,7 @@ SVBT/
 
 1. **Review the visual presentation** by running the dev server and testing on desktop/mobile
 2. **Tim Power approval** of biography and leadership content
-3. **Complete regular information** (about us)
+3. **Complete regulatory information** (licensing, FDIC)
 4. **Security review** before production deployment
 5. **Domain setup** for siliconvalleybankandtrust.com
 6. **Production infrastructure** setup with proper database and HTTPS
