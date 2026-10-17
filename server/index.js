@@ -73,9 +73,9 @@ export async function createApp(options = {}) {
       console.log(`Provisioning customer: ${custEmail}`);
       const custHash = await hashPassword(custPassword);
       const custId = Number(db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(
-        custEmail, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001', 'customer', custHash
+        custEmail, 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117', 'customer', custHash
       ).lastInsertRowid);
-      newAccount(db, custId, 'Bakhtiari Auto Group', '456 Commerce Way, Los Angeles, CA 90001');
+      newAccount(db, custId, 'Bakhtiari Auto Group, LLC', '3155 Stevens Creek, San Jose, CA 95117');
       custUser = db.prepare('SELECT id FROM users WHERE email=?').get(custEmail);
       console.log('✓ Customer account created');
     }
@@ -91,7 +91,7 @@ export async function createApp(options = {}) {
           await issueStatement(db, custAccount.id, month, mod.id, config.statementDir);
         }
       }
-      console.log('✓ Demo data seeded successfully'); } } else { const modEmail = process.env.MODERATOR_EMAIL; const modSecret = process.env.MODERATOR_PASSWORD; if (!modEmail || !modSecret) throw new Error('MODERATOR_EMAIL and MODERATOR_PASSWORD are required when DEMO_SEED is disabled.'); if (!db.prepare('SELECT id FROM users WHERE email=?').get(modEmail)) { const modHash = await hashPassword(modSecret); db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(modEmail, 'Timothy Powers', 'Silicon Valley, California', 'moderator', modHash); } console.log('Production startup: moderator provisioned from environment, no demo data.');
+      console.log('✓ Demo data seeded successfully'); } } else { if (config.production && db.prepare("SELECT value FROM metadata WHERE key='demo-seeded'").get()) throw new Error('Refusing to start production with a demo-seeded database.'); const modEmail = process.env.MODERATOR_EMAIL; const modSecret = process.env.MODERATOR_PASSWORD; if (modEmail && modSecret && !db.prepare('SELECT id FROM users WHERE email=?').get(modEmail)) { const modHash = await hashPassword(modSecret); db.prepare('INSERT INTO users(email,name,address,role,passwordHash) VALUES (?,?,?,?,?)').run(modEmail, 'Timothy Powers', 'Silicon Valley, California', 'moderator', modHash); } console.log('Startup without demo data: moderator provisioned from environment only when configured.');
     }
     const dummyHash = await hashPassword(randomBytes(32).toString('hex'));
     const app = express();
@@ -124,6 +124,9 @@ export async function createApp(options = {}) {
         });
       };
       
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !requestOrigin) {
+        return next(Object.assign(new Error('An exact matching Origin is required for write requests.'), { status: 403 }));
+      }
       if (requestOrigin && !isOriginAllowed(requestOrigin)) {
         return next(Object.assign(new Error('Request origin is not allowed.'), { status: 403 }));
       }
@@ -134,7 +137,8 @@ export async function createApp(options = {}) {
       next();
     });
     app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-    app.use('/api', express.json({ limit: '4mb', strict: true }));
+    const smallJson = express.json({ limit: '16kb', strict: true }), largeJson = express.json({ limit: '4mb', strict: true });
+    app.use('/api', (req, res, next) => (req.path.startsWith('/admin/') ? largeJson : smallJson)(req, res, next));
     const cookieName = 'svbt_session';
     function makeSession(req, res, userId) {
       const token = randomBytes(32).toString('base64url'), csrfToken = randomBytes(32).toString('base64url');
