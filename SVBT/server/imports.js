@@ -3,10 +3,11 @@ import { atomic, audit } from './db.js';
 import { account, accountData, digest, fail, date } from './services.js';
 
 const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-const maxBytes = 256 * 1024, maxRows = 2000;
+const maxBytes = 256 * 1024, maxRows = 2000, maxLineLength = 4096;
 const dollars = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value / 100);
 
 function parseLine(line) {
+  if (line.length > maxLineLength) fail(413, 'A CSV row is larger than 4 KB.');
   const cells = []; let cell = '', quoted = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];

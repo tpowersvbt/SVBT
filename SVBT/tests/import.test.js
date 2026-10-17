@@ -47,6 +47,7 @@ test('cash-book amounts parse to exact cents', () => {
 test('preview reads every section, infers the year and reconciles to the running cash column', () => {
   const b = bank();
   try {
+    assert.throws(() => previewImport(b.db, b.id, { csv: 'x'.repeat(4097) }), /row is larger than 4 KB/);
     const result = previewImport(b.db, b.id, { csv: sheet });
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.rows.map(row => row.date), ['2026-06-01', '2026-06-03', '2026-06-09', '2026-07-01', '2026-07-10']);
