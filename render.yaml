@@ -1,28 +1,27 @@
-# Render Blueprint for Silicon Valley Bank and Trust (livesvbt)
 services:
   - type: web
-    name: livesvbt
+    name: svbt
     runtime: node
+    region: oregon
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: npm start
-    autoDeploy: true
+    startCommand: NODE_ENV=production npm start
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: HOST
-        value: 0.0.0.0
+      - key: APP_ORIGIN
+        value: https://siliconvalleybankandtrust.com
       - key: PORT
         value: 3000
-      - key: DEMO_SEED
-        value: "false"
-      - key: MODERATOR_EMAIL
-        sync: false
-      - key: MODERATOR_PASSWORD
-        sync: false
-      - key: APP_ORIGIN
-        sync: false
+      - key: HOST
+        value: 0.0.0.0
       - key: DB_PATH
-        value: /opt/render/project/src/data/bank.sqlite
+        value: ./data/bank.sqlite
       - key: STATEMENT_DIR
-        value: /opt/render/project/src/monthly/statements
+        value: ./monthly/statements
+      - key: TRUST_PROXY
+        value: true
+      - key: DEMO_SEED
+        value: false
+      - key: DEMO_MODERATOR_EMAIL
+        value: tpower@siliconvalleybankandtrust.com
+      - key: DEMO_MODERATOR_PASSWORD
+        value: svbt2026!
