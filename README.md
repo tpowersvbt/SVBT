@@ -144,3 +144,7 @@ SOURCE.txt provides the full contents of every project text file, including the 
 ## Design verification
 
 The site implements responsive navy/copper/ice styling, real extruded Three.js geometry, orbit controls, pause/reduced-motion handling, offscreen suspension and four procedural sector scenes. Inspect desktop and mobile browser widths and use a WebGL-enabled browser to evaluate the visual presentation. Automated build/API/PDF checks do not certify that the design meets a subjective visual standard.
+
+## Brand images
+
+Place `svbt-logo.png` (circular logo, used in the header and as favicon) and `svbt-facade.jpg` (bank building, used as the landing-page hero background) in `public/`. If either is missing the site falls back to the text mark and a dark gradient. Moderators manage the banner, footer, hero text and team under **Operations → Site settings / Team**.

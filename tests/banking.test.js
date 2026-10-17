@@ -321,3 +321,31 @@ test('server-only moderator provisioning requires unique non-demo credentials', 
     afterReset.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('site settings and team: public reads, moderator-only writes, validation and ordering', async () => {
+  const f = await fixture();
+  try {
+    const anon = f.client(); await anon.request('/session');
+    const pub = await anon.request('/site');
+    assert.equal(pub.status, 200);
+    assert.ok(pub.data.settings.heroTitle);
+    assert.equal((await anon.request('/admin/settings', 'PUT', { heroTitle: 'x' })).status, 401);
+    const customer = f.client(); await customer.request('/session');
+    await customer.request('/login', 'POST', { email: 'sales@bakhtiariautogroup.com', password: 'FounderClient!2026' });
+    assert.equal((await customer.request('/admin/settings', 'PUT', { heroTitle: 'x' })).status, 403);
+    assert.equal((await customer.request('/admin/employees', 'POST', { name: 'A', title: 'B', bio: 'C' })).status, 403);
+    const c = f.client(); await c.request('/session');
+    assert.equal((await c.request('/login', 'POST', { email: 'tpower@siliconvalleybankandtrust.com', password: 'ModeratorGod!2026' })).status, 200);
+    assert.equal((await c.request('/admin/settings', 'PUT', { heroTitle: 'New title', bannerImage: 'javascript:alert(1)' })).status, 400);
+    assert.equal((await c.request('/admin/settings', 'PUT', { unknown: 'x' })).status, 400);
+    assert.equal((await c.request('/admin/settings', 'PUT', { heroTitle: 'New title', footerText: 'Footer', bannerImage: '/banner.png' })).status, 200);
+    assert.equal((await anon.request('/site')).data.settings.heroTitle, 'New title');
+    const second = (await c.request('/admin/employees', 'POST', { name: 'Second', title: 'T', bio: 'B', displayOrder: 2 })).data;
+    await c.request('/admin/employees', 'POST', { name: 'First', title: 'T', bio: 'B', photoUrl: 'https://example.com/a.jpg', displayOrder: 1 });
+    assert.equal((await c.request('/admin/employees', 'POST', { name: 'Bad', title: 'T', bio: 'B', photoUrl: 'http://example.com/a.jpg' })).status, 400);
+    assert.deepEqual((await anon.request('/site')).data.employees.map(e => e.name), ['First', 'Second']);
+    assert.equal((await c.request(`/admin/employees/${second.id}`, 'DELETE', {})).status, 200);
+    assert.equal((await c.request(`/admin/employees/${second.id}`, 'DELETE', {})).status, 404);
+    assert.deepEqual((await anon.request('/site')).data.employees.map(e => e.name), ['First']);
+  } finally { await f.close(); }
+});
