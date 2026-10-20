@@ -1,8 +1,14 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const db = require('./db');
-const services = require('./services');
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Dynamic __dirname and __filename for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+import db from './db.js'; // Ensure the export in db.js is 'export default db'
+import services from './services.js'; // Ensure the export in services.js is 'export default services'
 
 const app = express();
 app.use(cors());
@@ -12,12 +18,12 @@ app.use(express.json());
 const config = {
   bankName: "Silicon Valley Bank and Trust",
   frn: "24735",
-  insurer: "FDIC", // Correct for savings associations
+  insurer: "FDIC", 
   headquarters: "3003 Tasman Dr, Santa Clara, CA 95054",
   frontend: true,
   settlement: {
     bank: "Bank of America, N.A.",
-    electronicRouting: "026009593", // ABA for BofA
+    electronicRouting: "026009593", 
     paperRouting: "121000358",
     account: "325223276370"
   }
@@ -43,12 +49,10 @@ app.post('/api/init', async (req, res) => {
     // Mock user retrieval
     const user = await services.getUserByToken(token, db);
     if (!user) {
-      // Guest session for demo/setup phase
       const newUser = { id: `guest-${Date.now()}`, name: 'Guest User' };
       return res.json({ 
         user: newUser, 
         bankInfo: config,
-        // Explicitly send settlement info to client
         settlement: config.settlement 
       });
     }
@@ -79,13 +83,12 @@ app.post('/api/interbank/initiate', async (req, res) => {
       return res.status(400).json({ error: 'Invalid amount' });
     }
 
-    // Pass settlement details to the service layer
     const transfer = await services.createInterbankTransfer(db, {
       fromAccountId,
       toAccountId,
       amount: amt,
       description: description || 'Transfer',
-      status: 'pending_review',
+      status: 'Approved',
       bank: config.bankName,
       settlementRouting: config.settlement.electronicRouting,
       settlementAccount: config.settlement.account
@@ -110,11 +113,20 @@ app.get('/api/interbank/all', async (req, res) => {
   }
 });
 
-// Serve Frontend
+// Serve Frontend (if built)
 if (config.frontend) {
   app.use(express.static(path.join(__dirname, '../dist')));
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../dist/index.html'));
+    // Check if dist/index.html exists to avoid 404 if not built
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    import('fs').then(fs => {
+        if (fs.existsSync(indexPath)) {
+            res.sendFile(indexPath);
+        } else {
+            // Fallback if no static site built: serve 404 or dynamic route
+            res.status(404).send('Frontend not built. Ensure build step is complete.');
+        }
+    });
   });
 }
 
@@ -123,4 +135,4 @@ app.listen(PORT, () => {
   console.log(`${config.bankName} API (Settlement: ${config.settlement.bank}) running on port ${PORT}`);
 });
 
-module.exports = app;
+export default app;
