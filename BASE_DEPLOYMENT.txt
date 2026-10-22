@@ -1,0 +1,43 @@
+REAL BASE APPLICATION — DEPLOYMENT CANDIDATE
+
+Target: svbt-tn8v, service srv-dbcia129lscs73cmov30, Blueprint Final.
+Source: release/svbt-base-20261021; deploy an exact commit, without merging main.
+The sample-preview branch and its demo entry point are excluded.
+
+Required target configuration:
+  Compute: 0.5c-512mb ($7/month shown by Render)
+  Persistent disk: 1 GB mounted /var/data ($0.25/GB/month)
+  Automatic deployments: off
+  Build: npm ci && npm run build
+  Start: node server/initialize-installation.js
+  Health check: /api/health
+  NODE_ENV=production
+  APP_ORIGIN=https://svbt-tn8v.onrender.com
+  HOST=0.0.0.0
+  TRUST_PROXY=true
+  STORAGE_ROOT=/var/data
+  DB_PATH=/var/data/bank.sqlite
+  STATEMENT_DIR=/var/data/statements
+  DEMO_SEED=false
+  SAMPLE_DATA=false
+  SVBT_INITIALIZE_EMPTY=true
+
+First launch creates a new database exclusively, only if missing. Existing
+database files are never overwritten. Durable paths must be on the mounted
+volume. No sample users, balances, statements or transactions are generated.
+
+Owner access: Tim's MODERATOR_EMAIL and a privately supplied unique
+MODERATOR_PASSWORD must be configured to provision his owner login.
+Do not publish or commit that password. No password is included here.
+
+Verification after deployment: confirm the exact live commit, health, supplied
+logo/address and public endpoints; confirm no demo seed marker or invented
+account activity; test owner access and record only authorized genuine activity.
+Internal transfers are actual atomic ledger operations between application
+accounts. This package does not add external settlement or a connection to
+protected Overseer systems.
+
+Neither existing livesvbt database is migrated, overwritten or discarded.
+No customer records will be copied into this new installation by this startup.
+Team storage can replace this installation's storage through a later reviewed
+handoff. Pending: approval for the paid infrastructure before applying it.
