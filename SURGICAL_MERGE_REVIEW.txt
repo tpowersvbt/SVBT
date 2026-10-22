@@ -1,0 +1,157 @@
+SVBT SURGICAL INTEGRATION — REVIEW ONLY
+Prepared October 21, 2026 (Pacific). No production data was read or changed.
+
+REPOSITORIES AND BRANCHES
+Target: tpowersvbt/SVBT, main = 1dfac1c86f62e7b2ff3ecbd7a1447bf18824321b.
+Its default branch is master = a3a8d9176ba11527470b107004a744c8f78bb9b6.
+Donor: tpowersvbt/livesvbt, main = 57e7febaceefd3f41c9d7bb3581670c8b2f1a281.
+Review branch: integration/svbt-surgical-20261021, based on target main.
+The donor repository and both production branches remain unchanged.
+
+VERIFIED RENDER STATE
+Connection: Tim. Workspace: My Workspace (tea-db9orujrjlhs73fke5ug).
+svbt-zkkw: service srv-db9p6mcs728c73chbbag, donor main, deployed commit
+57e7feb, live deploy dep-dbcihggn74is73eo06ig; health returned HTTP 200.
+One 1 GB disk is mounted at /var/data. Current configured rootDir is .github/.
+That directory contains no package.json in the donor tree. A live commit label
+alone does not prove which of the two application trees is serving traffic.
+svbt-tn8v: srv-dbcia129lscs73cmov30, target main, rootDir empty, free plan,
+build_failed at commit 1dfac1c. No attached disk is shown in connector metadata.
+Build logs confirm npm ci rejected missing lockfile dependencies.
+svbt-839i: suspended, unchanged. Two additional target/master services were
+also discovered: svbt-6ssb and svbt-5poy. They were left unchanged.
+All returned services track main or master; pull request previews were off.
+
+EXACT DATABASE PATH FINDINGS
+Target main server/index.js never opens the database or reads DB_PATH. It
+imports nonexistent default exports from db.js and services.js and cannot
+start as written. Its mocked transfer route is not evidence of settlement.
+Donor root server/index.js uses configuration().dbPath:
+  options.dbPath ?? resolve(process.env.DB_PATH || resolve(root,'data/bank.sqlite'))
+An explicit relative DB_PATH resolves against process.cwd(); an omitted value
+defaults to the root application's own data/bank.sqlite.
+Donor SVBT/server/index.js uses the same expression, but root is the nested
+SVBT directory, so the omitted default is SVBT/data/bank.sqlite.
+The donor root also automatically provisions published demo accounts even
+in production. That startup behavior was excluded from the integration.
+The integrated root retains relative-path compatibility for development and
+createApp tests. Executable production startup requires explicit absolute
+DB_PATH and STATEMENT_DIR and an existing database before opening/migrating it.
+The backup and restore commands now share the application-root default path.
+
+DATABASE, PERSISTENCE AND BACKUP
+Database engine: built-in node:sqlite DatabaseSync, not better-sqlite3.
+WAL, foreign keys, 5-second busy timeout, atomic writes and immutable ledger,
+audit and issued-statement records are retained. Donor migrations 1–6 are
+included; new migrations 7 and 8 add batch receipts and legacy site tables.
+A database schema newer than the application is refused.
+The existing root render.yaml remains unchanged: it uses a free plan and
+relative DB/statement paths, with no persistent disk. It is not ready for this
+production startup guard and must not be deployed unchanged.
+deploy/render.production.proposed.yaml is a separate REVIEW-ONLY proposal:
+paid starter service, 1 GB /var/data disk, absolute database/statement paths,
+manual deployments, health endpoint and secret placeholders. It passed the
+current Render 2020-12 JSON schema. No Render sync/validation API was invoked.
+Blueprint Final's resource association still requires confirmation before use.
+
+The connector exposes neither the live filesystem nor backup inventory.
+Actual runtime DB_PATH/STATEMENT_DIR, database contents/size, disk placement,
+backup existence, off-service retention and recoverability remain unverified.
+A mounted disk does not establish that the database is stored on that disk.
+No assumption was made that any database is disposable.
+The included backup helper uses SQLite VACUUM INTO, integrity validation,
+gzip and SHA-256, and is tested with committed WAL data. It was NOT run against
+production. Restore requires a matching checksum and valid SQLite structure,
+rejects an existing target or orphan WAL/SHM, cleans failed staging files and
+publishes with an atomic no-clobber link. Restore-pending health returns 503.
+Statement PDFs remain stored in SQLite; archive integrity supports the current
+statement directory without rewriting immutable issued records.
+
+FEATURE COMPARISON AND IMPLEMENTATION
+The four proposed donor files were absent from target main. imports.js and
+DemoImport.jsx were copied with their supporting dependencies; transfers.js
+and restore-bootstrap.js were copied then extended/hardened. Copying only
+those four would leave missing migrations, permissions, service and UI modules.
+The donor nested source was selected for the functional application, preserving
+target-only files and restoring its bulk ledger and site/team/settings APIs.
+No nested dist build, SOURCE.txt, database, environment file or credentials
+were imported. Root deployment configuration and CI were preserved.
+
+Internal transfers: retained password-confirmed PIN setup, PIN lockout,
+ownership checks, integer cents, available balance and daily limits, paired
+debit/credit entries, audit and request idempotency.
+Batch transfers: no batch implementation existed in the inspected donor
+runtime source despite its commit title. Added review/confirmation UI and
+1–100 transfers per atomic transaction. Combined balance/daily limits apply;
+any invalid row rolls back all ledger entries and audit writes. Durable batch
+receipts prevent retries from sending money again.
+Bulk ledger posting: retained target's 1–2000 CSV/entry posting API and added
+a workspace form. This records account activity, not external settlement.
+Owner/Admin: retained Tim handover, role controls, account details, editable
+site text/colors, projects, leadership, investments, versioned transaction
+annotations and statement notes. Original ledger/issued PDFs remain immutable.
+VIP onboarding: owner-created customer accounts were exercised for 20 initial
+users, with unique account numbers, zero funding, audit and duplicate rejection.
+Only synthetic local users were created. No real investor roster or promises
+of funded deposits were invented.
+Statements: preserve ledger-derived totals, revision hashes, archives, sample
+labels for demo imports and truthful no-real-funds/non-insured disclosures.
+The original target's fake auto-approved interbank initiation stub was replaced
+by the authenticated application. No real external banking capability is claimed.
+
+BRANDING
+The user-supplied logo was copied unchanged to public/svbt-logo.jpg and is used
+in the public header/footer, workspace and newly rendered PDFs. Desktop and
+mobile visibility were tested. Previously issued PDFs are not rewritten.
+SHA-256: 4ED19C499158565DDCBA26615A70AF282F62D2D060E5B0EB8C609EF12F13F00E
+Physical address: 3003 Tasman Drive, Santa Clara, CA, in public copy and new
+statement branding. Existing owner overrides can supersede default copy.
+The existing phone branding was retained.
+
+PROTECTED OVERSEER INTEGRATION
+No identifiable Overseer integration was found in the inspected runtime source.
+Protected data, secret values and external integration endpoints were not
+accessed or modified. Operational external configuration was preserved.
+Compatibility with a protected integration outside these files remains an
+explicit release blocker, not a claimed verification.
+
+PACKAGE AND VALIDATION
+Removed unused better-sqlite3 and cors declarations that had been added to the
+manifest without corresponding lock entries. Runtime uses node:sqlite and
+same-origin authenticated routes. The lockfile resolves the resulting manifest;
+no broad dependency upgrades were introduced. Node >=24 root policy retained.
+Server suite: 48 passing tests, including banking/authentication, 20-user owner
+onboarding, transfers/batches, imports, immutable statements, backup/restore,
+storage guards, migration rollback and legacy API compatibility.
+Browser checks cover supplied logo on desktop/mobile, atomic batch failure and
+successful confirmation, project privacy/publishing, WebGL, customer sign-in,
+statement preview/archive integrity and PDF download.
+Browser testing also found and fixed a donor project-preview crash (missing
+copy callback), stale test labels and PIN-setup timing exposure.
+See the accompanying final validation log for exact command outcomes.
+
+REQUIRED RISK REVIEW BEFORE ANY MERGE OR DEPLOY
+1. Confirm Blueprint Final manages existing svbt-tn8v, not another service.
+2. Verify the live runtime entry point/root and actual database/archive paths.
+3. Create an application-consistent backup, retain it off the source service,
+   verify its checksum and rehearse restore/migrations on an isolated copy.
+4. Provision the intended persistent disk and an approved database on it;
+   inspect existing target data first. Do not overwrite or discard any database.
+5. Review schema compatibility and all existing account/ledger/statement counts
+   on a protected copy. Document a data-preserving rollback and service downtime.
+6. Replace the old Blueprint's published demo/staff credential configuration
+   with reviewed secret provisioning; rotate any deployed published passwords.
+7. Verify protected Overseer compatibility with its authorized maintainer,
+   plus public domain/origin/cookie routing and Tim's owner access.
+8. Obtain explicit user approval for the exact merge/deployment plan.
+
+No main/master merge, force push, deployment, service suspension, disk mutation,
+production backup/restore, external integration modification or protected-data
+access was performed.
+
+PRIMARY PLATFORM REFERENCES CHECKED
+https://render.com/docs/deploys
+https://render.com/docs/health-checks
+https://render.com/docs/disks
+https://render.com/docs/blueprint-spec
+https://render.com/schema/render.yaml.json

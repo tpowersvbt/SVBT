@@ -1,0 +1,40 @@
+SVBT final validation — October 21, 2026 (Pacific)
+
+Draft pull request: https://github.com/tpowersvbt/SVBT/pull/20
+Review branch: integration/svbt-surgical-20261021
+Base: tpowersvbt/SVBT main, 1dfac1c86f62e7b2ff3ecbd7a1447bf18824321b
+Donor: tpowersvbt/livesvbt main, 57e7febaceefd3f41c9d7bb3581670c8b2f1a281
+
+PASS — npm ci --no-audit --no-fund (246 packages installed; exit 0).
+The installed npm warned about deprecated transitive packages and its local
+install-script policy for esbuild. Lint and the build then completed successfully.
+PASS — npm run lint.
+PASS — npm run build (Vite production build).
+PASS — npm test: 48 tests, 48 passed, zero failed/skipped/cancelled.
+PASS — npm run test:ui: 6 tests, 6 passed.
+PASS — separate proposed Blueprint against current Render 2020-12 JSON schema.
+PASS — supplied logo's SHA-256 matches the committed file byte-for-byte.
+
+Browser coverage includes a dedicated synthetic sender/recipient, a rejected
+batch with no partial transfer, successful confirmation of two transfers,
+project preview/publication privacy, desktop/mobile logo rendering, WebGL,
+customer login/logout, statement integrity and issued PDF download.
+Temporary fixture databases only. No real investor accounts were provisioned.
+
+Server checks include 20 owner-created zero-funded customers, role boundaries,
+immutable audit and statements, transfer retry/limit/lockout/rollback behavior,
+demo-only imports, WAL-consistent backup/restore, migration rollback and legacy
+bulk ledger/site compatibility.
+
+Remote verification after branch publication:
+SVBT/main remains 1dfac1c86f62e7b2ff3ecbd7a1447bf18824321b.
+Reference Render latest deploy remains live at 57e7feb.
+Intended Render latest deploy remains its original build_failed deploy.
+No main/master merge or live deployment occurred.
+
+Screenshots: svbt-desktop.png and svbt-mobile.png in this output folder.
+Detailed risk findings: SVBT-surgical-review.txt.
+
+Release remains gated on verified runtime/database paths, backup and isolated
+restore rehearsal, target disk and Blueprint identity, protected Overseer
+compatibility, credential provisioning and explicit user approval.

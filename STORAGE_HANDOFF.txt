@@ -1,0 +1,72 @@
+SVBT follow-up readiness review — October 21, 2026 (Pacific)
+
+GitHub
+PR #20 is open, ready for review and unmerged.
+Latest checked implementation/documentation head: c81bcc0402a389d41cf2cf694c20277c350d78fe.
+GitHub Actions run 39716792131 completed successfully. Its npm ci, lint,
+server tests and production build all passed on GitHub, independently of
+the earlier local validation. The local six-browser-test suite also passed.
+
+Render Blueprint identity — CONFIRMED
+Blueprint Final: exs-db9p6d61egvs73841eq0.
+Its resources page lists svbt, service srv-dbcia129lscs73cmov30 (svbt-tn8v),
+and links tpowersvbt/SVBT main. This resolves the previous mapping question.
+https://dashboard.render.com/blueprint/exs-db9p6d61egvs73841eq0/resources
+
+Current runtime and storage — CONFIRMED THROUGH METADATA ONLY
+Reference service: srv-db9p6mcs728c73chbbag / svbt-zkkw.
+Configured DB_PATH: ./data/bank.sqlite.
+Configured STATEMENT_DIR: ./monthly/statements.
+The web shell starts in /opt/render/project/src/.github, but the running
+application process uses /opt/render/project/src as its working directory.
+Open database file descriptors point to:
+  /opt/render/project/src/data/bank.sqlite
+  /opt/render/project/src/data/bank.sqlite-wal
+  /opt/render/project/src/data/bank.sqlite-shm
+Its real path is outside /var/data. The main file is 4,096 bytes, with a
+329,632-byte WAL at inspection. File size alone does not describe its data.
+
+Another database exists on the persistent disk:
+  /var/data/bank.sqlite
+  /var/data/bank.sqlite-wal
+  /var/data/bank.sqlite-shm
+Its main file is 4,096 bytes, with a 622,152-byte WAL at inspection.
+Its device and inode differ from those of the running database. These are
+separate database files, not alternative paths to one database. Neither
+was opened, queried, copied, overwritten or declared disposable in this review.
+
+The active root server/index.js hash matches livesvbt's root server at
+57e7feb (SHA-256 f3de4e27b77f9c92cc6dfae2ee972fd8e4552883b9cbc060594d28218dad3058).
+It differs from that commit's nested SVBT/server/index.js. The runtime package
+start command is node server/index.js. This resolves the earlier entry-point
+ambiguity: the live artifact uses the donor root server, while the reviewed
+integration deliberately incorporates the more complete nested application.
+
+Archive and backup metadata
+Four files exist under /opt/render/project/src/monthly/statements.
+Two files exist under /var/data/statements. Their contents were not inspected.
+Neither /opt/render/project/src/data/backups nor /var/data/backups exists.
+This does not rule out backups stored elsewhere.
+The Render disk dashboard lists snapshots labeled October 21, 2026 at 5:09 PM,
+October 20 at 4:56 PM and October 19 at 4:58 PM. No snapshot was restored.
+Those disk snapshots do not cover the active database outside /var/data.
+An application-consistent, recoverable backup has not yet been established.
+
+Receiving-team storage handoff
+The user says the receiving team will provide internal storage for clients.
+No paid plan, disk, service, database or storage configuration was provisioned.
+The two existing databases and both archive directories remain untouched.
+Provide this inventory to the team's storage owner before cutover. Preserve
+both databases and their WAL state; the receiving team must decide which data
+belongs in the final system after backup and comparison on isolated copies.
+The reviewed application currently expects SQLite at DB_PATH and statement
+files at STATEMENT_DIR. The team's storage implementation must satisfy that
+contract or include an explicit application adaptation.
+
+Release status
+The target still auto-deploys commits to main. Merging is therefore a release
+action, even if nobody separately clicks Deploy. No merge, sync, deploy,
+restart, suspension, credential change or protected Overseer access occurred.
+Overseer compatibility remains for the authorized maintainer to verify.
+The next decision is a reviewed cutover plan with the receiving team's storage
+owner, followed by explicit user approval of the merge/deployment actions.

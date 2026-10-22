@@ -1,0 +1,37 @@
+# REVIEW ONLY. Do not point a Blueprint here or sync before the risk review.
+# Confirm this maps to existing service srv-dbcia129lscs73cmov30, Blueprint Final.
+services:
+  - type: web
+    name: svbt
+    runtime: node
+    repo: https://github.com/tpowersvbt/SVBT
+    branch: main
+    region: oregon
+    plan: starter
+    autoDeployTrigger: 'off'
+    buildCommand: npm ci && npm run build
+    startCommand: NODE_ENV=production npm start
+    healthCheckPath: /api/health
+    disk:
+      name: svbt-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: APP_ORIGIN
+        value: https://siliconvalleybankandtrust.com
+      - key: HOST
+        value: 0.0.0.0
+      - key: DB_PATH
+        value: /var/data/bank.sqlite
+      - key: STATEMENT_DIR
+        value: /var/data/statements
+      - key: TRUST_PROXY
+        value: 'true'
+      - key: DEMO_SEED
+        value: 'false'
+      - key: SAMPLE_DATA
+        value: 'false'
+      - key: MODERATOR_EMAIL
+        sync: false
+      - key: MODERATOR_PASSWORD
+        sync: false
