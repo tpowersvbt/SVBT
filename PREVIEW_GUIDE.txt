@@ -1,0 +1,35 @@
+SVBT SAMPLE PREVIEW — DEPLOYMENT CANDIDATE
+
+Source: review/svbt-preview-20261021, based on the reviewed integration branch.
+Suggested new service: svbt-review-20261021, Tim / My Workspace / Oregon.
+Plan: free. Auto-deploy: off. No persistent disk or external database.
+Build command: npm ci && npm run build
+Start command: node server/preview.js
+Environment: SVBT_PREVIEW_ONLY=true, NODE_ENV=test
+Origin is taken from Render's RENDER_EXTERNAL_URL at runtime.
+
+This service uses a fresh in-memory sample database on every process start.
+It never opens DB_PATH or either existing operational database. Statement PDFs
+are generated in a new temporary directory. Public registration is disabled,
+email delivery is disabled, and the page visibly identifies itself as a test.
+Do not enter real clients, personal information or financial data.
+
+PUBLIC SAMPLE ACCOUNTS — valid only for this disposable demonstration:
+Customer: customer@svbt-preview.example / PreviewCustomer2026!
+Owner: owner@svbt-preview.example / PreviewOwner2026!
+These are intentional public demo credentials, never production credentials.
+
+Two review flows:
+1. Verify the supplied logo and 3003 Tasman Drive, Santa Clara, CA address on
+   desktop/mobile and in a newly generated sample statement PDF.
+2. Use the owner workspace to create a synthetic recipient account. Use the
+   seeded customer to set a transfer PIN, review and send a small two-row batch,
+   then check linked debit/credit entries and audit history. Also verify that
+   an invalid recipient rejects the whole batch without partial posting.
+
+Local preparation checks passed: preview storage-isolation/login/registration
+test, lint and production build. The implementation's 48 server tests and six
+browser checks are documented in VALIDATION_SURGICAL.txt.
+
+Deployment has not been started. Deployment target selection is pending.
+No main merge or existing Render service change is part of this candidate.
